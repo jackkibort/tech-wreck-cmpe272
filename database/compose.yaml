@@ -1,0 +1,38 @@
+# Employees database (Section 0.2): MySQL 8.4 LTS holding the unchanged test_db dataset.
+# Area file included by the root Compose file; only reachable on the internal "data" network.
+services:
+  mysql:
+    image: mysql:8.4.13
+    restart: unless-stopped
+    environment:
+      # Used only on first initialization of the mysql-data volume (Section 0.9).
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set in .env}
+    # Server hardening passed as flags rather than a mounted .cnf file: MySQL ignores
+    # world-writable config files, which is how bind mounts appear on Windows hosts.
+    command:
+      # Reject every unencrypted TCP connection (Section 8.5). Socket connections used by
+      # the import and bootstrap scripts inside the container are still allowed.
+      - --require-secure-transport=ON
+      # Refuse legacy protocol versions.
+      - --tls-version=TLSv1.2,TLSv1.3
+      # The API never loads files; remove the LOAD DATA LOCAL attack surface.
+      - --local-infile=OFF
+      # Grants use '%'; reverse DNS lookups only add latency.
+      - --skip-name-resolve
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - data
+    healthcheck:
+      # Socket connection inside the container; does not need TLS.
+      test: ["CMD-SHELL", "mysqladmin ping -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  mysql-data:
+
+networks:
+  data:
