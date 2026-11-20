@@ -1,0 +1,10 @@
+# Integration-test profile: the Testcontainers MySQL instance is created empty, so Flyway
+# builds the original schema from test fixtures and then applies the real migrations.
+spring:
+  datasource:
+    hikari:
+      # Fixture migrations write data; production stays read-only.
+      read-only: false
+  flyway:
+    enabled: true
+    locations: classpath:db/testdata,classpath:db/migration

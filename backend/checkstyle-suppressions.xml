@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+    "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+    "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+<!-- Checkstyle exceptions, each with its reason. -->
+<suppressions>
+  <!-- Test method names describe scenarios (e.g. tcApi04_employeeReadsOtherSalary_isForbidden);
+       Javadoc on every test method would only repeat the method name. -->
+  <suppress checks="MethodName|MissingJavadocMethod|MissingJavadocType|AbbreviationAsWordInName"
+            files="[\\/]src[\\/]test[\\/]"/>
+</suppressions>
