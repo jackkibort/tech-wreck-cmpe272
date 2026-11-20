@@ -51,3 +51,8 @@ management:
     env:
       enabled: false
 
+logging:
+  structured:
+    format:
+      # One JSON object per line on stdout (Section 0.10); no log files.
+      console: edu.sjsu.securehr.api.config.JsonLineLogFormatter
