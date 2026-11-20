@@ -24,8 +24,10 @@ services:
     networks:
       - data
     healthcheck:
-      # Socket connection inside the container; does not need TLS.
-      test: ["CMD-SHELL", "mysqladmin ping -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      # Ping over TCP (TLS negotiated by default): the temporary server MySQL runs during
+      # first-time initialization listens on the socket only, so this passes only once the
+      # real server is up.
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
       interval: 10s
       timeout: 5s
       retries: 12
