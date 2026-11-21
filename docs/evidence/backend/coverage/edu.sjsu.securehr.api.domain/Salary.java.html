@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Salary.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">securehr-api</a> &gt; <a href="index.source.html" class="el_package">edu.sjsu.securehr.api.domain</a> &gt; <span class="el_source">Salary.java</span></div><h1>Salary.java</h1><pre class="source lang-java linenums">package edu.sjsu.securehr.api.domain;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Embeddable;
+import jakarta.persistence.EmbeddedId;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Table;
+import java.io.Serializable;
+import java.time.LocalDate;
+import org.hibernate.annotations.Immutable;
+
+/** Salary history (original {@code salaries} table). Restricted data: never logged. */
+@Entity
+@Immutable
+@Table(name = &quot;salaries&quot;)
+public class Salary {
+
+  /** Composite primary key (emp_no, from_date). */
+  @Embeddable
+<span class="fc" id="L20">  public record Key(</span>
+      @Column(name = &quot;emp_no&quot;) Integer empNo, @Column(name = &quot;from_date&quot;) LocalDate fromDate)
+      implements Serializable {}
+
+  @EmbeddedId private Key id;
+
+  @Column(name = &quot;salary&quot;)
+  private Integer amount;
+
+  @Column(name = &quot;to_date&quot;)
+  private LocalDate toDate;
+
+  /** Required by JPA. */
+<span class="fc" id="L33">  protected Salary() {}</span>
+
+  public Key getId() {
+<span class="fc" id="L36">    return id;</span>
+  }
+
+  public Integer getAmount() {
+<span class="fc" id="L40">    return amount;</span>
+  }
+
+  public LocalDate getToDate() {
+<span class="fc" id="L44">    return toDate;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

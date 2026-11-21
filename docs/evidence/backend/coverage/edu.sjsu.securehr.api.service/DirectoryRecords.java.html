@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DirectoryRecords.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">securehr-api</a> &gt; <a href="index.source.html" class="el_package">edu.sjsu.securehr.api.service</a> &gt; <span class="el_source">DirectoryRecords.java</span></div><h1>DirectoryRecords.java</h1><pre class="source lang-java linenums">package edu.sjsu.securehr.api.service;
+
+import edu.sjsu.securehr.api.domain.Dates;
+import edu.sjsu.securehr.api.domain.DeptEmp;
+import edu.sjsu.securehr.api.domain.Employee;
+import edu.sjsu.securehr.api.domain.Title;
+import edu.sjsu.securehr.api.dto.EmployeeSummaryDto;
+import edu.sjsu.securehr.api.repository.DeptEmpRepository;
+import edu.sjsu.securehr.api.repository.TitleRepository;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import org.springframework.stereotype.Component;
+
+/**
+ * Resolves the current department and title that accompany directory fields. Lookups for a page are
+ * batched: two queries per page, not two per employee.
+ */
+@Component
+public class DirectoryRecords {
+
+  private final DeptEmpRepository deptEmps;
+  private final TitleRepository titles;
+
+  /**
+   * Creates the helper.
+   *
+   * @param deptEmps department membership history
+   * @param titles title history
+   */
+<span class="fc" id="L33">  public DirectoryRecords(DeptEmpRepository deptEmps, TitleRepository titles) {</span>
+<span class="fc" id="L34">    this.deptEmps = deptEmps;</span>
+<span class="fc" id="L35">    this.titles = titles;</span>
+<span class="fc" id="L36">  }</span>
+
+  /**
+   * Builds directory summaries, preserving the input order.
+   *
+   * @param employees employees to summarize
+   * @return one summary per employee
+   */
+  public List&lt;EmployeeSummaryDto&gt; summarize(List&lt;Employee&gt; employees) {
+<span class="fc bfc" id="L45" title="All 2 branches covered.">    if (employees.isEmpty()) {</span>
+<span class="fc" id="L46">      return List.of();</span>
+    }
+<span class="fc" id="L48">    List&lt;Integer&gt; empNos = employees.stream().map(Employee::getEmpNo).toList();</span>
+<span class="fc" id="L49">    Map&lt;Integer, DeptEmp&gt; departments =</span>
+<span class="fc" id="L50">        deptEmps.findCurrentFor(empNos, Dates.CURRENT).stream()</span>
+<span class="fc" id="L51">            .collect(Collectors.toMap(de -&gt; de.getId().empNo(), Function.identity()));</span>
+<span class="fc" id="L52">    Map&lt;Integer, String&gt; currentTitles =</span>
+<span class="fc" id="L53">        titles.findCurrentFor(empNos, Dates.CURRENT).stream()</span>
+<span class="pc" id="L54">            .collect(Collectors.toMap(t -&gt; t.getId().empNo(), t -&gt; t.getId().title(), (a, b) -&gt; a));</span>
+<span class="fc" id="L55">    return employees.stream()</span>
+<span class="fc" id="L56">        .map(e -&gt; summary(e, departments.get(e.getEmpNo()), currentTitles.get(e.getEmpNo())))</span>
+<span class="fc" id="L57">        .toList();</span>
+  }
+
+  /**
+   * Builds one directory summary.
+   *
+   * @param employee the employee
+   * @return the summary
+   */
+  public EmployeeSummaryDto summarize(Employee employee) {
+<span class="fc" id="L67">    return summarize(List.of(employee)).get(0);</span>
+  }
+
+  /**
+   * The employee's current department membership.
+   *
+   * @param empNo employee number
+   * @return current membership, empty for former employees
+   */
+  public Optional&lt;DeptEmp&gt; currentMembership(int empNo) {
+<span class="fc" id="L77">    return deptEmps.findCurrentFor(empNo, Dates.CURRENT);</span>
+  }
+
+  /**
+   * The employee's current title.
+   *
+   * @param empNo employee number
+   * @return current title, if any
+   */
+  public Optional&lt;String&gt; currentTitle(int empNo) {
+<span class="fc" id="L87">    return titles.findCurrentFor(List.of(empNo), Dates.CURRENT).stream()</span>
+<span class="fc" id="L88">        .map(Title::getId)</span>
+<span class="fc" id="L89">        .map(Title.Key::title)</span>
+<span class="fc" id="L90">        .findFirst();</span>
+  }
+
+  private static EmployeeSummaryDto summary(Employee e, DeptEmp membership, String title) {
+<span class="fc" id="L94">    return new EmployeeSummaryDto(</span>
+<span class="fc" id="L95">        e.getEmpNo(),</span>
+<span class="fc" id="L96">        e.getFirstName(),</span>
+<span class="fc" id="L97">        e.getLastName(),</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">        membership == null ? null : membership.getDepartment().getDeptNo(),</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">        membership == null ? null : membership.getDepartment().getDeptName(),</span>
+        title);
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

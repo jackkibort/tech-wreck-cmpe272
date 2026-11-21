@@ -1,0 +1,86 @@
+# SecureHR Employee API configuration. Every environment-specific value comes from the
+# Section 0.9 environment variables; nothing here is a secret.
+spring:
+  application:
+    name: securehr-api
+  config:
+    # Database credentials are read from Vault at startup (Section 0.7) as securehr.db.*.
+    # "optional" only lets tests switch Vault off; startup still fails closed, because Vault
+    # errors are fatal (fail-fast) and the datasource credentials below have no defaults.
+    import: optional:vault://secret/securehr/api/db?prefix=securehr.db.
+  cloud:
+    vault:
+      uri: ${VAULT_ADDR:}
+      authentication: APPROLE
+      app-role:
+        role-id: ${API_VAULT_ROLE_ID:}
+        secret-id: ${API_VAULT_SECRET_ID:}
+      kv:
+        enabled: true
+        backend: secret
+      # Fail fast on a wrong or sealed Vault instead of retrying silently.
+      fail-fast: true
+  datasource:
+    # TLS is mandatory to MySQL (Section 8.5). The server certificate is encrypted-only,
+    # not CA-verified; see /docs/decisions.
+    url: jdbc:mysql://${MYSQL_HOST:mysql}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:employees}?sslMode=REQUIRED
+    username: ${securehr.db.username}
+    password: ${securehr.db.password}
+    hikari:
+      # The database user is SELECT-only; make that explicit to the driver as well.
+      read-only: true
+      maximum-pool-size: 10
+  jpa:
+    open-in-view: false
+    properties:
+      # Adds the MySQL name-order index hint to directory page queries (see the class).
+      hibernate.session_factory.statement_inspector: edu.sjsu.securehr.api.repository.NameOrderIndexHint
+    hibernate:
+      # The dataset is never changed by the application (Section 7.3).
+      ddl-auto: none
+  flyway:
+    # Migrations are applied by the api-migrate step with the migrator user, never at startup.
+    enabled: false
+    default-schema: securehr_flyway
+    schemas: securehr_flyway
+  mvc:
+    problemdetails:
+      enabled: false
+
+securehr:
+  security:
+    # Tokens must be issued by the SecureHR realm and name this API in "aud" (Section 0.5).
+    issuer-uri: ${KEYCLOAK_ISSUER_URI}
+    audience: ${API_AUDIENCE:securehr-api}
+
+server:
+  port: 8080
+  # Errors are rendered by the global exception handler in the Section 0.6 format only.
+  error:
+    include-message: never
+    include-stacktrace: never
+    whitelabel:
+      enabled: false
+  # The edge terminates TLS and sets X-Forwarded-* headers (Section 0.3).
+  forward-headers-strategy: native
+
+management:
+  endpoints:
+    web:
+      # Exposes the health endpoint at /api/health; it is not routed by the edge.
+      base-path: /api
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      show-components: never
+  info:
+    env:
+      enabled: false
+
+logging:
+  structured:
+    format:
+      # One JSON object per line on stdout (Section 0.10); no log files.
+      console: edu.sjsu.securehr.api.config.JsonLineLogFormatter

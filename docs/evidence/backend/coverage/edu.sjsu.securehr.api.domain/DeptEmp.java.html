@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DeptEmp.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">securehr-api</a> &gt; <a href="index.source.html" class="el_package">edu.sjsu.securehr.api.domain</a> &gt; <span class="el_source">DeptEmp.java</span></div><h1>DeptEmp.java</h1><pre class="source lang-java linenums">package edu.sjsu.securehr.api.domain;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Embeddable;
+import jakarta.persistence.EmbeddedId;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import java.io.Serializable;
+import java.time.LocalDate;
+import org.hibernate.annotations.Immutable;
+
+/**
+ * Department membership over time (original {@code dept_emp} table). The current membership has
+ * {@code to_date = 9999-01-01}; every employee has at most one.
+ */
+@Entity
+@Immutable
+@Table(name = &quot;dept_emp&quot;)
+public class DeptEmp {
+
+  /** Composite primary key (emp_no, dept_no). */
+  @Embeddable
+<span class="fc" id="L26">  public record Key(@Column(name = &quot;emp_no&quot;) Integer empNo, @Column(name = &quot;dept_no&quot;) String deptNo)</span>
+      implements Serializable {}
+
+  @EmbeddedId private Key id;
+
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = &quot;dept_no&quot;, insertable = false, updatable = false)
+  private Department department;
+
+  @Column(name = &quot;from_date&quot;)
+  private LocalDate fromDate;
+
+  @Column(name = &quot;to_date&quot;)
+  private LocalDate toDate;
+
+  /** Required by JPA. */
+<span class="fc" id="L42">  protected DeptEmp() {}</span>
+
+  public Key getId() {
+<span class="fc" id="L45">    return id;</span>
+  }
+
+  public Department getDepartment() {
+<span class="fc" id="L49">    return department;</span>
+  }
+
+  public LocalDate getFromDate() {
+<span class="nc" id="L53">    return fromDate;</span>
+  }
+
+  public LocalDate getToDate() {
+<span class="nc" id="L57">    return toDate;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>
