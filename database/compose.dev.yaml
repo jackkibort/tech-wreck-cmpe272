@@ -1,0 +1,7 @@
+# Developer-only override: publishes MySQL on the loopback interface so the API can be run
+# from an IDE and query plans can be inspected. Never used by the securehr-prod or staging
+# projects, where only the edge publishes host ports (Section 0.2).
+services:
+  mysql:
+    ports:
+      - "127.0.0.1:3306:3306"
