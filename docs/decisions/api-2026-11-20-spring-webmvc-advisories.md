@@ -12,5 +12,8 @@
     that return JSON or CSV, with no views and no SSE.
   - All other findings were fixed: Tomcat 10.1.62 and Jackson 2.21.8 overrides, Spring Cloud
     2025.0.3, and dropping the unused Apache HttpComponents and Bouncy Castle.
-- **Revisit:** By the expiry date. The team should decide whether to move both Java APIs to
-  Spring Boot 4.
+- **Decision:** Stay on the latest stable Spring Boot 3.x, as Section 0.1 requires. No upgrade to
+  Spring Boot 4 is planned or needed. If a later 3.x release fixes either advisory, upgrade to it
+  and remove the matching ignore entry.
+- **Revisit:** Only if the API starts using views or Server-Sent Events, or when the ignore
+  entries expire (Jan 31, 2027).

@@ -197,10 +197,11 @@ Results as of Nov 20, 2026:
 | Trivy 0.65.0, source and Dockerfile | 0 HIGH/CRITICAL, 0 secrets, 0 misconfigurations |
 | Trivy 0.65.0, `securehr/api` image | 0 HIGH/CRITICAL with [`.trivyignore.yaml`](.trivyignore.yaml) |
 
-`.trivyignore.yaml` accepts two Spring Web MVC advisories. Both are fixed only in Spring
-Framework 7 (Spring Boot 4), and both need features this API doesn't have: XSLT views and
-Server-Sent Events with view fragments. Each entry states why and expires on Jan 31, 2027.
-CI runs Trivy with `--ignorefile backend/.trivyignore.yaml`.
+`.trivyignore.yaml` accepts two Spring Web MVC advisories. Both need features this API doesn't
+have: XSLT views and Server-Sent Events with view fragments. No Spring Boot 3.x release fixes
+them yet, and we stay on the latest 3.x as Section 0.1 requires; no move to Spring Boot 4 is
+needed. Each entry states why and expires on Jan 31, 2027. CI runs Trivy with
+`--ignorefile backend/.trivyignore.yaml`.
 
 ## Decisions
 
