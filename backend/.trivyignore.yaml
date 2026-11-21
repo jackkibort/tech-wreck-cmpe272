@@ -1,0 +1,19 @@
+# Accepted Trivy findings for the Employee API image. Every entry says why it does not apply and
+# expires, so the decision is revisited. Use with: trivy image --ignorefile backend/.trivyignore.yaml
+#
+# No Spring Boot 3.x release fixes these yet. Section 0.1 pins the latest Spring Boot 3.x, and
+# 3.5.16 / Spring Framework 6.2.19 are the latest open-source releases of that line.
+vulnerabilities:
+  - id: CVE-2026-47884
+    purls:
+      - pkg:maven/org.springframework/spring-webmvc@6.2.19
+    statement: >-
+      Requires XsltView rendering from a catch-all mapping. The API renders no views: every
+      endpoint is a @RestController returning JSON or CSV, and no view resolver or XSLT is configured.
+    expired_at: 2027-01-31
+  - id: CVE-2026-47890
+    purls:
+      - pkg:maven/org.springframework/spring-webmvc@6.2.19
+    statement: >-
+      Requires Server-Sent Events with view fragments. The API has no SSE endpoints and no views.
+    expired_at: 2027-01-31

@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EmployeeService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">securehr-api</a> &gt; <a href="index.source.html" class="el_package">edu.sjsu.securehr.api.service</a> &gt; <span class="el_source">EmployeeService.java</span></div><h1>EmployeeService.java</h1><pre class="source lang-java linenums">package edu.sjsu.securehr.api.service;
+
+import edu.sjsu.securehr.api.audit.AuditEventType;
+import edu.sjsu.securehr.api.audit.AuditOutcome;
+import edu.sjsu.securehr.api.audit.AuditTrail;
+import edu.sjsu.securehr.api.domain.Dates;
+import edu.sjsu.securehr.api.domain.DeptEmp;
+import edu.sjsu.securehr.api.domain.Employee;
+import edu.sjsu.securehr.api.domain.Salary;
+import edu.sjsu.securehr.api.dto.EmployeeDetailDto;
+import edu.sjsu.securehr.api.dto.EmployeeSearchCriteria;
+import edu.sjsu.securehr.api.dto.EmployeeSummaryDto;
+import edu.sjsu.securehr.api.dto.MeDto;
+import edu.sjsu.securehr.api.dto.PageResponse;
+import edu.sjsu.securehr.api.dto.SalaryRecordDto;
+import edu.sjsu.securehr.api.dto.TitleRecordDto;
+import edu.sjsu.securehr.api.exception.ResourceNotFoundException;
+import edu.sjsu.securehr.api.repository.EmployeeRepository;
+import edu.sjsu.securehr.api.repository.EmployeeSpecifications;
+import edu.sjsu.securehr.api.repository.SalaryRepository;
+import edu.sjsu.securehr.api.repository.TitleRepository;
+import edu.sjsu.securehr.api.security.CurrentUser;
+import edu.sjsu.securehr.api.security.Role;
+import edu.sjsu.securehr.api.security.policy.EmployeeRecordPolicy;
+import edu.sjsu.securehr.api.security.policy.RecordAccess;
+import edu.sjsu.securehr.api.security.policy.SalaryPolicy;
+import java.util.List;
+import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.support.PageableExecutionUtils;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * Directory, record, title and salary use cases (UC-02 to UC-05). Every per-record method
+ * authorizes first, then loads data, then audits sensitive reads.
+ */
+@Service
+@Transactional(readOnly = true)
+public class EmployeeService {
+
+  /** Directory order; emp_no keeps paging stable for people with the same name. */
+<span class="fc" id="L45">  static final Sort DIRECTORY_ORDER = Sort.by(&quot;lastName&quot;, &quot;firstName&quot;, &quot;empNo&quot;);</span>
+
+  private static final String NOT_FOUND = &quot;Employee not found.&quot;;
+
+  private final EmployeeRepository employees;
+  private final TitleRepository titles;
+  private final SalaryRepository salaries;
+  private final DirectoryRecords directory;
+  private final SearchTotals searchTotals;
+  private final EmployeeRecordPolicy recordPolicy;
+  private final SalaryPolicy salaryPolicy;
+  private final AuditTrail auditTrail;
+
+  /**
+   * Creates the service.
+   *
+   * @param employees employee repository
+   * @param titles title history repository
+   * @param salaries salary history repository
+   * @param directory current department and title lookups
+   * @param searchTotals search totals
+   * @param recordPolicy record access policy
+   * @param salaryPolicy salary access policy
+   * @param auditTrail audit event publisher
+   */
+  public EmployeeService(
+      EmployeeRepository employees,
+      TitleRepository titles,
+      SalaryRepository salaries,
+      DirectoryRecords directory,
+      SearchTotals searchTotals,
+      EmployeeRecordPolicy recordPolicy,
+      SalaryPolicy salaryPolicy,
+<span class="fc" id="L78">      AuditTrail auditTrail) {</span>
+<span class="fc" id="L79">    this.employees = employees;</span>
+<span class="fc" id="L80">    this.titles = titles;</span>
+<span class="fc" id="L81">    this.salaries = salaries;</span>
+<span class="fc" id="L82">    this.directory = directory;</span>
+<span class="fc" id="L83">    this.searchTotals = searchTotals;</span>
+<span class="fc" id="L84">    this.recordPolicy = recordPolicy;</span>
+<span class="fc" id="L85">    this.salaryPolicy = salaryPolicy;</span>
+<span class="fc" id="L86">    this.auditTrail = auditTrail;</span>
+<span class="fc" id="L87">  }</span>
+
+  /**
+   * Searches current employees. Returns directory fields only, which every portal role may see.
+   *
+   * @param criteria search filters
+   * @param page zero-based page
+   * @param size requested page size (capped at {@link Paging#MAX_SIZE})
+   * @return one page of summaries
+   */
+  public PageResponse&lt;EmployeeSummaryDto&gt; search(
+      EmployeeSearchCriteria criteria, int page, int size) {
+<span class="fc" id="L99">    Pageable pageable = Paging.of(page, size, DIRECTORY_ORDER);</span>
+<span class="fc" id="L100">    Page&lt;Employee&gt; result =</span>
+<span class="fc" id="L101">        PageableExecutionUtils.getPage(</span>
+<span class="fc" id="L102">            employees.findPage(EmployeeSpecifications.forPage(criteria), pageable),</span>
+            pageable,
+<span class="nc" id="L104">            () -&gt; searchTotals.count(criteria));</span>
+<span class="fc" id="L105">    return new PageResponse&lt;&gt;(</span>
+<span class="fc" id="L106">        directory.summarize(result.getContent()),</span>
+<span class="fc" id="L107">        result.getNumber(),</span>
+<span class="fc" id="L108">        result.getSize(),</span>
+<span class="fc" id="L109">        result.getTotalElements(),</span>
+<span class="fc" id="L110">        result.getTotalPages());</span>
+  }
+
+  /**
+   * The caller and their own directory record.
+   *
+   * @param user the caller
+   * @return the caller's profile
+   */
+  public MeDto me(CurrentUser user) {
+<span class="fc" id="L120">    EmployeeSummaryDto own =</span>
+<span class="fc" id="L121">        Optional.ofNullable(user.empNo())</span>
+<span class="fc" id="L122">            .flatMap(employees::findById)</span>
+<span class="fc" id="L123">            .map(directory::summarize)</span>
+<span class="fc" id="L124">            .orElse(null);</span>
+<span class="fc" id="L125">    List&lt;String&gt; roles = user.roles().stream().map(Role::name).sorted().toList();</span>
+<span class="fc" id="L126">    return new MeDto(user.username(), user.empNo(), roles, own);</span>
+  }
+
+  /**
+   * Employee detail with restricted fields masked by role.
+   *
+   * @param user the caller
+   * @param empNo requested employee
+   * @return the employee
+   */
+  public EmployeeDetailDto detail(CurrentUser user, int empNo) {
+<span class="fc" id="L137">    RecordAccess access = recordPolicy.authorize(user, empNo);</span>
+<span class="fc" id="L138">    Employee employee = employees.findById(empNo).orElseThrow(EmployeeService::notFound);</span>
+<span class="fc" id="L139">    Optional&lt;DeptEmp&gt; membership = directory.currentMembership(empNo);</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">    boolean full = access == RecordAccess.FULL;</span>
+    Integer currentSalary =
+<span class="fc bfc" id="L142" title="All 2 branches covered.">        full</span>
+<span class="fc" id="L143">            ? salaries.findCurrentFor(empNo, Dates.CURRENT).map(Salary::getAmount).orElse(null)</span>
+<span class="fc" id="L144">            : null;</span>
+<span class="fc" id="L145">    auditOtherPersonRead(user, empNo);</span>
+<span class="fc" id="L146">    return new EmployeeDetailDto(</span>
+<span class="fc" id="L147">        employee.getEmpNo(),</span>
+<span class="fc" id="L148">        employee.getFirstName(),</span>
+<span class="fc" id="L149">        employee.getLastName(),</span>
+<span class="fc" id="L150">        employee.getGender().name(),</span>
+<span class="fc" id="L151">        employee.getHireDate(),</span>
+<span class="fc" id="L152">        membership.map(m -&gt; m.getDepartment().getDeptNo()).orElse(null),</span>
+<span class="fc" id="L153">        membership.map(m -&gt; m.getDepartment().getDeptName()).orElse(null),</span>
+<span class="fc" id="L154">        directory.currentTitle(empNo).orElse(null),</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">        full ? employee.getBirthDate() : null,</span>
+        currentSalary);
+  }
+
+  /**
+   * Title history, under the same rule as the detail view.
+   *
+   * @param user the caller
+   * @param empNo requested employee
+   * @return titles, oldest first
+   */
+  public List&lt;TitleRecordDto&gt; titles(CurrentUser user, int empNo) {
+<span class="fc" id="L167">    recordPolicy.authorize(user, empNo);</span>
+<span class="fc" id="L168">    requireExists(empNo);</span>
+<span class="fc" id="L169">    auditOtherPersonRead(user, empNo);</span>
+<span class="fc" id="L170">    return titles.findByIdEmpNoOrderByIdFromDateAsc(empNo).stream()</span>
+<span class="fc" id="L171">        .map(t -&gt;</span>
+<span class="fc" id="L172">            new TitleRecordDto(</span>
+<span class="fc" id="L173">                t.getId().title(), t.getId().fromDate(), Dates.apiToDate(t.getToDate())))</span>
+<span class="fc" id="L174">        .toList();</span>
+  }
+
+  /**
+   * Salary history: self and HR Admin only. Every successful read is audited as SALARY_READ.
+   *
+   * @param user the caller
+   * @param empNo requested employee
+   * @return salaries, oldest first
+   */
+  public List&lt;SalaryRecordDto&gt; salaries(CurrentUser user, int empNo) {
+<span class="fc" id="L185">    salaryPolicy.authorize(user, empNo);</span>
+<span class="fc" id="L186">    requireExists(empNo);</span>
+<span class="fc" id="L187">    List&lt;SalaryRecordDto&gt; history =</span>
+<span class="fc" id="L188">        salaries.findByIdEmpNoOrderByIdFromDateAsc(empNo).stream()</span>
+<span class="fc" id="L189">            .map(s -&gt;</span>
+<span class="fc" id="L190">                new SalaryRecordDto(</span>
+<span class="fc" id="L191">                    s.getAmount(), s.getId().fromDate(), Dates.apiToDate(s.getToDate())))</span>
+<span class="fc" id="L192">            .toList();</span>
+<span class="fc" id="L193">    auditTrail.record(AuditEventType.SALARY_READ, AuditOutcome.ALLOWED, user, empNo);</span>
+<span class="fc" id="L194">    return history;</span>
+  }
+
+  private void requireExists(int empNo) {
+<span class="fc bfc" id="L198" title="All 2 branches covered.">    if (employees.findById(empNo).isEmpty()) {</span>
+<span class="fc" id="L199">      throw notFound();</span>
+    }
+<span class="fc" id="L201">  }</span>
+
+  // Reading your own record is routine; reading anyone else's is a sensitive access (G4).
+  private void auditOtherPersonRead(CurrentUser user, int empNo) {
+<span class="fc bfc" id="L205" title="All 2 branches covered.">    if (!user.isEmployee(empNo)) {</span>
+<span class="fc" id="L206">      auditTrail.record(AuditEventType.DATA_READ, AuditOutcome.ALLOWED, user, empNo);</span>
+    }
+<span class="fc" id="L208">  }</span>
+
+  private static ResourceNotFoundException notFound() {
+<span class="fc" id="L211">    return new ResourceNotFoundException(NOT_FOUND);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

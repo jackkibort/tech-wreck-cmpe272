@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NameOrderIndexHint.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">securehr-api</a> &gt; <a href="index.source.html" class="el_package">edu.sjsu.securehr.api.repository</a> &gt; <span class="el_source">NameOrderIndexHint.java</span></div><h1>NameOrderIndexHint.java</h1><pre class="source lang-java linenums">package edu.sjsu.securehr.api.repository;
+
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.hibernate.resource.jdbc.spi.StatementInspector;
+
+/**
+ * Tells MySQL to read directory pages in name order from the name index.
+ *
+ * &lt;p&gt;Without the hint MySQL switches to sorting every employee once the page offset passes about
+ * 1,000 rows (2 s per request on the full dataset); with it, deep pages take milliseconds and the
+ * other filters are unaffected. Measurements are in the backend README.
+ *
+ * &lt;p&gt;JPA has no way to express a MySQL index hint, and Hibernate's own query-hint support only
+ * produces {@code USE INDEX}, which would also stop MySQL from using the first-name and hire-date
+ * indexes for filtering. This inspector therefore edits only statements with the exact shape of a
+ * directory page: a select from {@code employees} ordered by last name, first name and number with
+ * a limit. Everything else passes through unchanged. Registered in {@code application.yml}.
+ */
+<span class="fc" id="L20">public class NameOrderIndexHint implements StatementInspector {</span>
+
+  static final String HINT = &quot;FORCE INDEX FOR ORDER BY (idx_employees_last_first)&quot;;
+
+<span class="fc" id="L24">  private static final Pattern DIRECTORY_PAGE =</span>
+<span class="fc" id="L25">      Pattern.compile(</span>
+          &quot;^(select .+? from employees (\\w+))&quot;
+              + &quot;( where .+ order by \\2\\.last_name,\\2\\.first_name,\\2\\.emp_no limit .+)$&quot;,
+          Pattern.DOTALL);
+
+  @Override
+  public String inspect(String sql) {
+<span class="fc" id="L32">    Matcher page = DIRECTORY_PAGE.matcher(sql);</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">    return page.matches() ? page.group(1) + &quot; &quot; + HINT + page.group(3) : sql;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

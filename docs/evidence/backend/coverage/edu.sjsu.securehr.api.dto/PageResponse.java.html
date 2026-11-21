@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PageResponse.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">securehr-api</a> &gt; <a href="index.source.html" class="el_package">edu.sjsu.securehr.api.dto</a> &gt; <span class="el_source">PageResponse.java</span></div><h1>PageResponse.java</h1><pre class="source lang-java linenums">package edu.sjsu.securehr.api.dto;
+
+import java.util.List;
+import java.util.function.Function;
+import org.springframework.data.domain.Page;
+
+/**
+ * Paged response with exactly the Section 0.6 fields.
+ *
+ * @param content items on this page
+ * @param page zero-based page number
+ * @param size page size actually applied (after the cap)
+ * @param totalElements total matching items
+ * @param totalPages total pages
+ * @param &lt;T&gt; item type
+ */
+public record PageResponse&lt;T&gt;(
+    List&lt;T&gt; content, int page, int size, long totalElements, int totalPages) {
+
+  /** Defensive copy of the content. */
+<span class="fc" id="L21">  public PageResponse {</span>
+<span class="fc" id="L22">    content = List.copyOf(content);</span>
+<span class="fc" id="L23">  }</span>
+
+  /**
+   * Converts a Spring Data page, mapping each item.
+   *
+   * @param page source page
+   * @param mapper item mapping
+   * @param &lt;S&gt; source item type
+   * @param &lt;T&gt; response item type
+   * @return the response page
+   */
+  public static &lt;S, T&gt; PageResponse&lt;T&gt; of(Page&lt;S&gt; page, Function&lt;S, T&gt; mapper) {
+<span class="nc" id="L35">    return new PageResponse&lt;&gt;(</span>
+<span class="nc" id="L36">        page.getContent().stream().map(mapper).toList(),</span>
+<span class="nc" id="L37">        page.getNumber(),</span>
+<span class="nc" id="L38">        page.getSize(),</span>
+<span class="nc" id="L39">        page.getTotalElements(),</span>
+<span class="nc" id="L40">        page.getTotalPages());</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

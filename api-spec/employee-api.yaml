@@ -1,0 +1,452 @@
+openapi: 3.1.0
+info:
+  title: SecureHR Employee API
+  version: 1.0.0
+  summary: Read-only access to the company employee database, authorized per role.
+  description: |
+    Owner: Sabari. Implemented by the `api` service (`/backend`).
+
+    **Authentication.** Every operation except `/api/health` requires a Keycloak access token
+    (issuer `https://auth.securehr.local/realms/securehr`) whose `aud` contains `securehr-api`.
+    Roles are read from `realm_access.roles`; the caller's employee number comes only from
+    the `emp_no` claim, never from the request.
+
+    **Authorization** follows the Section 8.2 matrix. Deny by default. `401` means a missing
+    or invalid token; `403` means the caller may not perform the action. `404` is returned
+    only after authorization passes, so the API never reveals whether a record exists to a
+    caller who may not see it. AUDITOR receives `403` on every operation.
+
+    **Field masking.** `birthDate` and `currentSalary` are omitted from responses (not nulled)
+    for callers who may not see them.
+
+    **Dates** are ISO-8601 (`YYYY-MM-DD`). A `toDate` of `null` marks the current row
+    (stored as `9999-01-01` in the dataset).
+
+    **Rate limiting** is applied by the edge; `429` responses come from the edge, not the API.
+servers:
+  - url: https://securehr.local
+    description: Demo stack (securehr-prod)
+  - url: https://staging.securehr.local:8443
+    description: Staging stack (securehr-staging)
+security:
+  - bearerAuth: []
+tags:
+  - name: me
+    description: The signed-in caller.
+  - name: employees
+    description: Directory search, employee detail, title and salary history.
+  - name: departments
+    description: Departments and their current managers.
+  - name: org
+    description: Management chain (org chart).
+  - name: export
+    description: HR Admin CSV export.
+  - name: health
+    description: Internal liveness for Compose and Jenkins health checks.
+
+paths:
+  /api/me:
+    get:
+      tags: [me]
+      operationId: getMe
+      summary: Current user and their own basic record
+      description: Allowed for EMPLOYEE, MANAGER, HR_ADMIN.
+      responses:
+        "200":
+          description: The caller.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /api/employees:
+    get:
+      tags: [employees]
+      operationId: searchEmployees
+      summary: Search the employee directory
+      description: |
+        Allowed for EMPLOYEE, MANAGER, HR_ADMIN. Returns directory fields only (name,
+        current department, current title). Only current employees (with a current
+        department) are returned. Results are ordered by last name, first name, emp_no.
+      parameters:
+        - $ref: "#/components/parameters/Q"
+        - $ref: "#/components/parameters/DeptNo"
+        - $ref: "#/components/parameters/Title"
+        - $ref: "#/components/parameters/HiredFrom"
+        - $ref: "#/components/parameters/HiredTo"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      responses:
+        "200":
+          description: One page of matching employees.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmployeeSummaryPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /api/employees/{empNo}:
+    get:
+      tags: [employees]
+      operationId: getEmployee
+      summary: Employee detail
+      description: |
+        Allowed for the employee themself, a MANAGER for current members of a department
+        they currently manage, and HR_ADMIN. `birthDate` and `currentSalary` are present only
+        for the employee themself and HR_ADMIN.
+      parameters:
+        - $ref: "#/components/parameters/EmpNo"
+      responses:
+        "200":
+          description: The employee, with fields masked for the caller's role.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmployeeDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /api/employees/{empNo}/titles:
+    get:
+      tags: [employees]
+      operationId: getEmployeeTitles
+      summary: Title history
+      description: Same access rule as employee detail. Ordered by fromDate ascending.
+      parameters:
+        - $ref: "#/components/parameters/EmpNo"
+      responses:
+        "200":
+          description: Title history.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TitleRecord" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /api/employees/{empNo}/salaries:
+    get:
+      tags: [employees]
+      operationId: getEmployeeSalaries
+      summary: Salary history
+      description: |
+        Allowed for the employee themself and HR_ADMIN only. Every read is audited
+        (`SALARY_READ`); every denial is audited (`ACCESS_DENIED`). Ordered by fromDate
+        ascending.
+      parameters:
+        - $ref: "#/components/parameters/EmpNo"
+      responses:
+        "200":
+          description: Salary history.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SalaryRecord" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /api/departments:
+    get:
+      tags: [departments]
+      operationId: listDepartments
+      summary: Department list with current manager
+      description: Allowed for EMPLOYEE, MANAGER, HR_ADMIN. Ordered by deptNo.
+      responses:
+        "200":
+          description: All departments.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Department" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /api/org/{empNo}:
+    get:
+      tags: [org]
+      operationId: getOrgChain
+      summary: Management chain for an employee
+      description: |
+        Allowed for EMPLOYEE, MANAGER, HR_ADMIN. Returns the chain from the employee up to
+        the current manager of their current department, using directory fields only.
+      parameters:
+        - $ref: "#/components/parameters/EmpNo"
+      responses:
+        "200":
+          description: The management chain.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrgChain" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /api/export/employees:
+    get:
+      tags: [export]
+      operationId: exportEmployees
+      summary: CSV export of the current search filters
+      description: |
+        HR_ADMIN only. Accepts the same filters as `/api/employees` (no paging) and returns
+        at most 10,000 rows. When the cap truncates the result the response carries
+        `X-Export-Truncated: true`. Every export is audited (`EXPORT`). Cells beginning with
+        `=`, `+`, `-` or `@` are prefixed with `'` to prevent spreadsheet formula injection.
+        Columns: emp_no, first_name, last_name, gender, hire_date, dept_no, dept_name, title.
+      parameters:
+        - $ref: "#/components/parameters/Q"
+        - $ref: "#/components/parameters/DeptNo"
+        - $ref: "#/components/parameters/Title"
+        - $ref: "#/components/parameters/HiredFrom"
+        - $ref: "#/components/parameters/HiredTo"
+      responses:
+        "200":
+          description: CSV file sent as an attachment.
+          headers:
+            Content-Disposition:
+              schema: { type: string, example: 'attachment; filename="employees-export.csv"' }
+            X-Export-Truncated:
+              schema: { type: boolean }
+          content:
+            text/csv:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /api/health:
+    get:
+      tags: [health]
+      operationId: getHealth
+      summary: Health (internal only; not routed by the edge)
+      security: []
+      responses:
+        "200":
+          description: Service is up.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: Service is down.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    EmpNo:
+      name: empNo
+      in: path
+      required: true
+      schema: { type: integer, format: int32, minimum: 1 }
+    Q:
+      name: q
+      in: query
+      description: Name prefix, matched case-insensitively against first or last name.
+      schema: { type: string, minLength: 1, maxLength: 16 }
+    DeptNo:
+      name: deptNo
+      in: query
+      description: Current department number.
+      schema: { type: string, pattern: "^d[0-9]{3}$", example: d005 }
+    Title:
+      name: title
+      in: query
+      description: Exact current title.
+      schema: { type: string, maxLength: 50, example: Senior Engineer }
+    HiredFrom:
+      name: hiredFrom
+      in: query
+      description: Inclusive lower bound on hire date.
+      schema: { type: string, format: date }
+    HiredTo:
+      name: hiredTo
+      in: query
+      description: Inclusive upper bound on hire date.
+      schema: { type: string, format: date }
+    Page:
+      name: page
+      in: query
+      description: Zero-based page number.
+      schema: { type: integer, minimum: 0, default: 0 }
+    Size:
+      name: size
+      in: query
+      description: Page size. Values above 100 are capped at 100.
+      schema: { type: integer, minimum: 1, default: 25 }
+
+  responses:
+    BadRequest:
+      description: Invalid parameter.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Missing, expired, forged or wrong-audience token.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: The caller's role or scope does not allow this action.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: The record does not exist (returned only after authorization passes).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    TooManyRequests:
+      description: Rate limit exceeded (returned by the edge).
+
+  schemas:
+    Error:
+      type: object
+      required: [status, error, message, requestId]
+      properties:
+        status: { type: integer, example: 403 }
+        error: { type: string, example: Forbidden }
+        message: { type: string, example: You are not allowed to view this employee's salary. }
+        requestId: { type: string, example: 7f3c9a2e-0d3b-4f7e-9c41-2b1e5c6d8a90 }
+
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [UP, DOWN] }
+
+    Me:
+      type: object
+      required: [username, roles]
+      properties:
+        username: { type: string, example: demo.employee }
+        empNo: { type: [integer, "null"], format: int32 }
+        roles:
+          type: array
+          items: { type: string, enum: [EMPLOYEE, MANAGER, HR_ADMIN, AUDITOR, SECUREHR_DEV] }
+        employee:
+          description: The caller's own directory record; null when the token has no emp_no.
+          oneOf:
+            - $ref: "#/components/schemas/EmployeeSummary"
+            - type: "null"
+
+    EmployeeSummary:
+      type: object
+      required: [empNo, firstName, lastName]
+      properties:
+        empNo: { type: integer, format: int32, example: 10001 }
+        firstName: { type: string, example: Georgi }
+        lastName: { type: string, example: Facello }
+        deptNo: { type: [string, "null"], example: d005 }
+        deptName: { type: [string, "null"], example: Development }
+        title: { type: [string, "null"], example: Senior Engineer }
+
+    EmployeeSummaryPage:
+      type: object
+      required: [content, page, size, totalElements, totalPages]
+      properties:
+        content:
+          type: array
+          items: { $ref: "#/components/schemas/EmployeeSummary" }
+        page: { type: integer }
+        size: { type: integer }
+        totalElements: { type: integer, format: int64 }
+        totalPages: { type: integer }
+
+    EmployeeDetail:
+      type: object
+      required: [empNo, firstName, lastName, gender, hireDate]
+      properties:
+        empNo: { type: integer, format: int32 }
+        firstName: { type: string }
+        lastName: { type: string }
+        gender: { type: string, enum: [M, F] }
+        hireDate: { type: string, format: date }
+        deptNo: { type: [string, "null"] }
+        deptName: { type: [string, "null"] }
+        title: { type: [string, "null"] }
+        birthDate:
+          type: string
+          format: date
+          description: Present only for the employee themself and HR_ADMIN.
+        currentSalary:
+          type: integer
+          description: Present only for the employee themself and HR_ADMIN.
+
+    TitleRecord:
+      type: object
+      required: [title, fromDate]
+      properties:
+        title: { type: string }
+        fromDate: { type: string, format: date }
+        toDate: { type: [string, "null"], format: date }
+
+    SalaryRecord:
+      type: object
+      required: [salary, fromDate]
+      properties:
+        salary: { type: integer }
+        fromDate: { type: string, format: date }
+        toDate: { type: [string, "null"], format: date }
+
+    EmployeeRef:
+      type: object
+      required: [empNo, firstName, lastName]
+      properties:
+        empNo: { type: integer, format: int32 }
+        firstName: { type: string }
+        lastName: { type: string }
+
+    Department:
+      type: object
+      required: [deptNo, deptName]
+      properties:
+        deptNo: { type: string, example: d005 }
+        deptName: { type: string, example: Development }
+        manager:
+          oneOf:
+            - $ref: "#/components/schemas/EmployeeRef"
+            - type: "null"
+
+    OrgNode:
+      type: object
+      required: [empNo, firstName, lastName]
+      properties:
+        empNo: { type: integer, format: int32 }
+        firstName: { type: string }
+        lastName: { type: string }
+        title: { type: [string, "null"] }
+
+    OrgChain:
+      type: object
+      required: [chain]
+      properties:
+        deptNo: { type: [string, "null"] }
+        deptName: { type: [string, "null"] }
+        chain:
+          description: |
+            First element is the requested employee; the last is the current manager of
+            their current department. A single element means the employee is that manager
+            (or has no current department).
+          type: array
+          items: { $ref: "#/components/schemas/OrgNode" }

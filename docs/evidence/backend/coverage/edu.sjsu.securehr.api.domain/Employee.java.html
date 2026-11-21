@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Employee.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">securehr-api</a> &gt; <a href="index.source.html" class="el_package">edu.sjsu.securehr.api.domain</a> &gt; <span class="el_source">Employee.java</span></div><h1>Employee.java</h1><pre class="source lang-java linenums">package edu.sjsu.securehr.api.domain;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import java.time.LocalDate;
+import org.hibernate.annotations.Immutable;
+
+/** Row of the original {@code employees} table. Read-only: the dataset is never modified. */
+@Entity
+@Immutable
+@Table(name = &quot;employees&quot;)
+public class Employee {
+
+  /** Values of the dataset's {@code gender} ENUM column. */
+<span class="fc" id="L19">  public enum Gender {</span>
+<span class="fc" id="L20">    M,</span>
+<span class="fc" id="L21">    F</span>
+  }
+
+  @Id
+  @Column(name = &quot;emp_no&quot;)
+  private Integer empNo;
+
+  @Column(name = &quot;birth_date&quot;)
+  private LocalDate birthDate;
+
+  @Column(name = &quot;first_name&quot;)
+  private String firstName;
+
+  @Column(name = &quot;last_name&quot;)
+  private String lastName;
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = &quot;gender&quot;)
+  private Gender gender;
+
+  @Column(name = &quot;hire_date&quot;)
+  private LocalDate hireDate;
+
+  /** Required by JPA. */
+<span class="fc" id="L45">  protected Employee() {}</span>
+
+  public Integer getEmpNo() {
+<span class="fc" id="L48">    return empNo;</span>
+  }
+
+  public LocalDate getBirthDate() {
+<span class="fc" id="L52">    return birthDate;</span>
+  }
+
+  public String getFirstName() {
+<span class="fc" id="L56">    return firstName;</span>
+  }
+
+  public String getLastName() {
+<span class="fc" id="L60">    return lastName;</span>
+  }
+
+  public Gender getGender() {
+<span class="fc" id="L64">    return gender;</span>
+  }
+
+  public LocalDate getHireDate() {
+<span class="fc" id="L68">    return hireDate;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

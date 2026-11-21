@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AuditLogListener.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">securehr-api</a> &gt; <a href="index.source.html" class="el_package">edu.sjsu.securehr.api.audit</a> &gt; <span class="el_source">AuditLogListener.java</span></div><h1>AuditLogListener.java</h1><pre class="source lang-java linenums">package edu.sjsu.securehr.api.audit;
+
+import edu.sjsu.securehr.api.config.JsonLineLogFormatter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.event.EventListener;
+import org.springframework.stereotype.Component;
+
+/**
+ * The only writer of audit events: one JSON line per event with {@code log_type=audit} on stdout,
+ * collected by Alloy into Loki (Section 11). Every Section 11.1 field is always present, with
+ * {@code null} when not applicable, so dashboards can rely on the shape.
+ */
+@Component
+<span class="fc" id="L15">public class AuditLogListener {</span>
+
+<span class="fc" id="L17">  private static final Logger AUDIT = LoggerFactory.getLogger(JsonLineLogFormatter.AUDIT_LOGGER);</span>
+
+  /**
+   * Writes an audit event.
+   *
+   * @param event the event to write
+   */
+  @EventListener
+  public void onAuditEvent(AuditEvent event) {
+<span class="fc" id="L26">    AUDIT</span>
+<span class="fc" id="L27">        .atInfo()</span>
+<span class="fc" id="L28">        .addKeyValue(&quot;timestamp&quot;, event.timestamp().toString())</span>
+<span class="fc" id="L29">        .addKeyValue(&quot;event_type&quot;, event.eventType().name())</span>
+<span class="fc" id="L30">        .addKeyValue(&quot;actor_username&quot;, event.actorUsername())</span>
+<span class="fc" id="L31">        .addKeyValue(&quot;actor_emp_no&quot;, event.actorEmpNo())</span>
+<span class="fc" id="L32">        .addKeyValue(&quot;actor_roles&quot;, event.actorRoles())</span>
+<span class="fc" id="L33">        .addKeyValue(&quot;target_emp_no&quot;, event.targetEmpNo())</span>
+<span class="fc" id="L34">        .addKeyValue(&quot;resource&quot;, event.resource())</span>
+<span class="fc" id="L35">        .addKeyValue(&quot;outcome&quot;, event.outcome().name())</span>
+<span class="fc" id="L36">        .addKeyValue(&quot;source_ip&quot;, event.sourceIp())</span>
+<span class="fc" id="L37">        .addKeyValue(&quot;request_id&quot;, event.requestId())</span>
+<span class="fc" id="L38">        .log(event.eventType().name());</span>
+<span class="fc" id="L39">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ManagerScope.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">securehr-api</a> &gt; <a href="index.source.html" class="el_package">edu.sjsu.securehr.api.security.policy</a> &gt; <span class="el_source">ManagerScope.java</span></div><h1>ManagerScope.java</h1><pre class="source lang-java linenums">package edu.sjsu.securehr.api.security.policy;
+
+import edu.sjsu.securehr.api.domain.Dates;
+import edu.sjsu.securehr.api.repository.DeptEmpRepository;
+import edu.sjsu.securehr.api.repository.DeptManagerRepository;
+import java.util.List;
+import org.springframework.stereotype.Component;
+
+/**
+ * Manager scope (Section 8.2): a manager may see only &lt;em&gt;current&lt;/em&gt; members of a department they
+ * &lt;em&gt;currently&lt;/em&gt; manage. Former managers and former members are out of scope.
+ */
+@Component
+public class ManagerScope {
+
+  private final DeptManagerRepository deptManagers;
+  private final DeptEmpRepository deptEmps;
+
+  /**
+   * Creates the scope check.
+   *
+   * @param deptManagers department manager history
+   * @param deptEmps department membership history
+   */
+<span class="fc" id="L25">  public ManagerScope(DeptManagerRepository deptManagers, DeptEmpRepository deptEmps) {</span>
+<span class="fc" id="L26">    this.deptManagers = deptManagers;</span>
+<span class="fc" id="L27">    this.deptEmps = deptEmps;</span>
+<span class="fc" id="L28">  }</span>
+
+  /**
+   * Whether the target is a current member of a department the manager currently manages.
+   *
+   * @param managerEmpNo the manager's employee number
+   * @param targetEmpNo the employee being requested
+   * @return {@code true} if in scope
+   */
+  public boolean includes(int managerEmpNo, int targetEmpNo) {
+<span class="fc" id="L38">    List&lt;String&gt; managed = deptManagers.findCurrentDeptNosManagedBy(managerEmpNo, Dates.CURRENT);</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">    if (managed.isEmpty()) {</span>
+<span class="fc" id="L40">      return false;</span>
+    }
+<span class="fc" id="L42">    return deptEmps</span>
+<span class="fc" id="L43">        .findCurrentFor(targetEmpNo, Dates.CURRENT)</span>
+<span class="fc" id="L44">        .map(membership -&gt; managed.contains(membership.getId().deptNo()))</span>
+<span class="fc" id="L45">        .orElse(false);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

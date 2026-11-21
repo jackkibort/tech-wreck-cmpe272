@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EmployeeDetailDto.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">securehr-api</a> &gt; <a href="index.source.html" class="el_package">edu.sjsu.securehr.api.dto</a> &gt; <span class="el_source">EmployeeDetailDto.java</span></div><h1>EmployeeDetailDto.java</h1><pre class="source lang-java linenums">package edu.sjsu.securehr.api.dto;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import java.time.LocalDate;
+
+/**
+ * Employee detail. {@code birthDate} and {@code currentSalary} are restricted fields: they are
+ * {@code null} unless the policy allows them and then omitted from the JSON entirely, so masked
+ * data never reaches the client (Section 8.2).
+ *
+ * @param empNo employee number
+ * @param firstName first name
+ * @param lastName last name
+ * @param gender M or F
+ * @param hireDate hire date
+ * @param deptNo current department number, or {@code null}
+ * @param deptName current department name, or {@code null}
+ * @param title current title, or {@code null}
+ * @param birthDate restricted: birth date
+ * @param currentSalary restricted: current salary
+ */
+<span class="fc" id="L22">public record EmployeeDetailDto(</span>
+    int empNo,
+    String firstName,
+    String lastName,
+    String gender,
+    LocalDate hireDate,
+    String deptNo,
+    String deptName,
+    String title,
+    @JsonInclude(JsonInclude.Include.NON_NULL) LocalDate birthDate,
+    @JsonInclude(JsonInclude.Include.NON_NULL) Integer currentSalary) {}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>
