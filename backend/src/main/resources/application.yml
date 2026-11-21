@@ -3,10 +3,29 @@
 spring:
   application:
     name: securehr-api
+  config:
+    # Database credentials are read from Vault at startup (Section 0.7) as securehr.db.*.
+    # "optional" only lets tests switch Vault off; startup still fails closed, because Vault
+    # errors are fatal (fail-fast) and the datasource credentials below have no defaults.
+    import: optional:vault://secret/securehr/api/db?prefix=securehr.db.
+  cloud:
+    vault:
+      uri: ${VAULT_ADDR:}
+      authentication: APPROLE
+      app-role:
+        role-id: ${API_VAULT_ROLE_ID:}
+        secret-id: ${API_VAULT_SECRET_ID:}
+      kv:
+        enabled: true
+        backend: secret
+      # Fail fast on a wrong or sealed Vault instead of retrying silently.
+      fail-fast: true
   datasource:
     # TLS is mandatory to MySQL (Section 8.5). The server certificate is encrypted-only,
     # not CA-verified; see /docs/decisions.
     url: jdbc:mysql://${MYSQL_HOST:mysql}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:employees}?sslMode=REQUIRED
+    username: ${securehr.db.username}
+    password: ${securehr.db.password}
     hikari:
       # The database user is SELECT-only; make that explicit to the driver as well.
       read-only: true

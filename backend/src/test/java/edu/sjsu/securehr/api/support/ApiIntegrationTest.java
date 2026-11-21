@@ -16,7 +16,14 @@ import org.springframework.test.context.ActiveProfiles;
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
-@SpringBootTest
+// Vault is replaced by the Testcontainers connection here; VaultCredentialsIT covers Vault.
+// Inline test properties, because profile files are read too late to switch Vault off.
+@SpringBootTest(
+    properties = {
+      "spring.cloud.vault.enabled=false",
+      "securehr.db.username=unused",
+      "securehr.db.password=unused"
+    })
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Import({

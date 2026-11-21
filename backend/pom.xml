@@ -25,7 +25,21 @@
     <jacoco.version>0.8.16</jacoco.version>
     <!-- Coverage gate from Section 13.1, applied to the service and security packages. -->
     <coverage.minimum>0.70</coverage.minimum>
+    <!-- Spring Cloud release train for Spring Boot 3.5; provides Spring Cloud Vault. -->
+    <spring-cloud.version>2025.0.0</spring-cloud.version>
   </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-dependencies</artifactId>
+        <version>${spring-cloud.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 
   <dependencies>
     <dependency>
@@ -51,6 +65,11 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
+    <!-- Database credentials come from Vault via AppRole (Section 0.7), never from files. -->
+    <dependency>
+      <groupId>org.springframework.cloud</groupId>
+      <artifactId>spring-cloud-starter-vault-config</artifactId>
     </dependency>
     <dependency>
       <groupId>com.mysql</groupId>
@@ -88,6 +107,11 @@
     <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>mysql</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>vault</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
