@@ -25,6 +25,12 @@ spring:
     problemdetails:
       enabled: false
 
+securehr:
+  security:
+    # Tokens must be issued by the SecureHR realm and name this API in "aud" (Section 0.5).
+    issuer-uri: ${KEYCLOAK_ISSUER_URI}
+    audience: ${API_AUDIENCE:securehr-api}
+
 server:
   port: 8080
   # Errors are rendered by the global exception handler in the Section 0.6 format only.
