@@ -32,6 +32,9 @@ spring:
       maximum-pool-size: 10
   jpa:
     open-in-view: false
+    properties:
+      # Adds the MySQL name-order index hint to directory page queries (see the class).
+      hibernate.session_factory.statement_inspector: edu.sjsu.securehr.api.repository.NameOrderIndexHint
     hibernate:
       # The dataset is never changed by the application (Section 7.3).
       ddl-auto: none

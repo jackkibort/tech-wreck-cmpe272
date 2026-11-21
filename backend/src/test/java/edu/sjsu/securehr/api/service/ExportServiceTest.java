@@ -67,7 +67,7 @@ class ExportServiceTest {
   private void givenMatches(int count) {
     List<Employee> matches =
         IntStream.range(0, count).mapToObj(ExportServiceTest::employee).toList();
-    when(employees.findBy(any(), any())).thenReturn(matches);
+    when(employees.findPage(any(), any())).thenReturn(matches);
     when(directory.summarize(anyList()))
         .thenAnswer(invocation ->
             ((List<Employee>) invocation.getArgument(0))

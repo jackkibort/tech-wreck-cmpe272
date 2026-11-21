@@ -12,6 +12,7 @@ import edu.sjsu.securehr.api.security.CurrentUser;
 import java.util.Arrays;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -82,9 +83,9 @@ public class ExportService {
   public EmployeeExport export(CurrentUser user, EmployeeSearchCriteria criteria) {
     // One extra row tells us whether the cap cut anything off, without a count query.
     List<Employee> matches =
-        employees.findBy(
-            EmployeeSpecifications.matching(criteria),
-            q -> q.sortBy(EmployeeService.DIRECTORY_ORDER).limit(maxRows + 1).all());
+        employees.findPage(
+            EmployeeSpecifications.forPage(criteria),
+            PageRequest.of(0, maxRows + 1, EmployeeService.DIRECTORY_ORDER));
     boolean truncated = matches.size() > maxRows;
     List<Employee> rows = truncated ? matches.subList(0, maxRows) : matches;
 

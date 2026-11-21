@@ -5,6 +5,9 @@ import edu.sjsu.securehr.api.domain.DeptEmp;
 import edu.sjsu.securehr.api.domain.Employee;
 import edu.sjsu.securehr.api.domain.Title;
 import edu.sjsu.securehr.api.dto.EmployeeSearchCriteria;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
 import org.springframework.data.jpa.domain.Specification;
 
@@ -21,15 +24,31 @@ public final class EmployeeSpecifications {
   private EmployeeSpecifications() {}
 
   /**
-   * Combines every supplied filter; absent filters are ignored. Results are always limited to
-   * current employees (those with a current department).
+   * Filters for fetching a sorted page (search and export). Combines every supplied filter; absent
+   * filters are ignored. Results are always limited to current employees.
    *
    * @param criteria search filters
    * @return the combined specification
    */
-  public static Specification<Employee> matching(EmployeeSearchCriteria criteria) {
+  public static Specification<Employee> forPage(EmployeeSearchCriteria criteria) {
+    return withFilters(currentInDepartmentPerRow(criteria.deptNo()), criteria);
+  }
+
+  /**
+   * The same filters, shaped for counting. Counting needs no sort order, so MySQL's semijoin
+   * rewrite of {@code exists}, which hurts a sorted page, is the faster plan here.
+   *
+   * @param criteria search filters
+   * @return the combined specification
+   */
+  public static Specification<Employee> forCount(EmployeeSearchCriteria criteria) {
+    return withFilters(currentInDepartment(criteria.deptNo()), criteria);
+  }
+
+  private static Specification<Employee> withFilters(
+      Specification<Employee> current, EmployeeSearchCriteria criteria) {
     return Specification.allOf(
-        currentlyInDepartment(criteria.deptNo()),
+        current,
         nameStartsWith(criteria.q()),
         hasCurrentTitle(criteria.title()),
         hiredOnOrAfter(criteria),
@@ -37,22 +56,46 @@ public final class EmployeeSpecifications {
   }
 
   /**
-   * Current employees, optionally restricted to one department. Uses the (dept_no, to_date, emp_no)
-   * index.
+   * Current employees, optionally restricted to one department, as an {@code exists} subquery. Uses
+   * the (dept_no, to_date, emp_no) index.
    */
-  static Specification<Employee> currentlyInDepartment(String deptNo) {
+  static Specification<Employee> currentInDepartment(String deptNo) {
     return (root, query, cb) -> {
       Subquery<Integer> membership = query.subquery(Integer.class);
       var deptEmp = membership.from(DeptEmp.class);
-      membership.select(deptEmp.get("id").get("empNo"));
-      var current = cb.equal(deptEmp.get("toDate"), Dates.CURRENT);
-      var sameEmployee = cb.equal(deptEmp.get("id").get("empNo"), root.get("empNo"));
-      membership.where(
-          deptNo == null
-              ? cb.and(sameEmployee, current)
-              : cb.and(sameEmployee, current, cb.equal(deptEmp.get("id").get("deptNo"), deptNo)));
+      membership
+          .select(deptEmp.get("id").get("empNo"))
+          .where(currentMembership(cb, deptEmp, root, deptNo));
       return cb.exists(membership);
     };
+  }
+
+  /**
+   * The same condition written as {@code (select count(*) ...) > 0}, on purpose. MySQL turns an
+   * {@code exists} into a semijoin, which for broad filters joins and sorts every current employee
+   * (2.7 s for the unfiltered first page on the full dataset). A scalar subquery is checked per row
+   * instead, so MySQL walks the name index in sort order and stops after one page (under 1 ms),
+   * while selective filters such as a title still drive the plan. Measurements are in the backend
+   * README.
+   */
+  static Specification<Employee> currentInDepartmentPerRow(String deptNo) {
+    return (root, query, cb) -> {
+      Subquery<Long> memberships = query.subquery(Long.class);
+      var deptEmp = memberships.from(DeptEmp.class);
+      memberships
+          .select(cb.count(deptEmp.get("id").get("empNo")))
+          .where(currentMembership(cb, deptEmp, root, deptNo));
+      return cb.greaterThan(memberships, 0L);
+    };
+  }
+
+  private static Predicate currentMembership(
+      CriteriaBuilder cb, Root<DeptEmp> deptEmp, Root<Employee> employee, String deptNo) {
+    Predicate sameEmployee = cb.equal(deptEmp.get("id").get("empNo"), employee.get("empNo"));
+    Predicate current = cb.equal(deptEmp.get("toDate"), Dates.CURRENT);
+    return deptNo == null
+        ? cb.and(sameEmployee, current)
+        : cb.and(sameEmployee, current, cb.equal(deptEmp.get("id").get("deptNo"), deptNo));
   }
 
   /**

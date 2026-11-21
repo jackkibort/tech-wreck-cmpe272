@@ -7,7 +7,7 @@ import org.springframework.data.repository.Repository;
 
 /** Read-only access to employees; search filters are composed as Specifications. */
 public interface EmployeeRepository
-    extends Repository<Employee, Integer>, JpaSpecificationExecutor<Employee> {
+    extends Repository<Employee, Integer>, JpaSpecificationExecutor<Employee>, EmployeePageQuery {
 
   /**
    * Finds an employee by number.

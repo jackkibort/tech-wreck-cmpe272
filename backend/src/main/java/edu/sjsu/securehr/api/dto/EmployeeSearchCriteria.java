@@ -22,6 +22,19 @@ public record EmployeeSearchCriteria(
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hiredFrom,
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hiredTo) {
 
+  /**
+   * Whether the only filter, if any, is the department: the directory's default view and its
+   * department filter, whose totals come from department membership alone.
+   *
+   * @return {@code true} if no filter other than {@code deptNo} is set
+   */
+  public boolean isDepartmentOnly() {
+    return (q == null || q.isBlank())
+        && (title == null || title.isBlank())
+        && hiredFrom == null
+        && hiredTo == null;
+  }
+
   /** Rejects an inverted hire-date range. */
   @AssertTrue
   public boolean isHireRangeOrdered() {

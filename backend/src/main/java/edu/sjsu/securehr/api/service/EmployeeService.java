@@ -27,7 +27,9 @@ import edu.sjsu.securehr.api.security.policy.SalaryPolicy;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.support.PageableExecutionUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,6 +50,7 @@ public class EmployeeService {
   private final TitleRepository titles;
   private final SalaryRepository salaries;
   private final DirectoryRecords directory;
+  private final SearchTotals searchTotals;
   private final EmployeeRecordPolicy recordPolicy;
   private final SalaryPolicy salaryPolicy;
   private final AuditTrail auditTrail;
@@ -59,6 +62,7 @@ public class EmployeeService {
    * @param titles title history repository
    * @param salaries salary history repository
    * @param directory current department and title lookups
+   * @param searchTotals search totals
    * @param recordPolicy record access policy
    * @param salaryPolicy salary access policy
    * @param auditTrail audit event publisher
@@ -68,6 +72,7 @@ public class EmployeeService {
       TitleRepository titles,
       SalaryRepository salaries,
       DirectoryRecords directory,
+      SearchTotals searchTotals,
       EmployeeRecordPolicy recordPolicy,
       SalaryPolicy salaryPolicy,
       AuditTrail auditTrail) {
@@ -75,6 +80,7 @@ public class EmployeeService {
     this.titles = titles;
     this.salaries = salaries;
     this.directory = directory;
+    this.searchTotals = searchTotals;
     this.recordPolicy = recordPolicy;
     this.salaryPolicy = salaryPolicy;
     this.auditTrail = auditTrail;
@@ -90,9 +96,12 @@ public class EmployeeService {
    */
   public PageResponse<EmployeeSummaryDto> search(
       EmployeeSearchCriteria criteria, int page, int size) {
+    Pageable pageable = Paging.of(page, size, DIRECTORY_ORDER);
     Page<Employee> result =
-        employees.findAll(
-            EmployeeSpecifications.matching(criteria), Paging.of(page, size, DIRECTORY_ORDER));
+        PageableExecutionUtils.getPage(
+            employees.findPage(EmployeeSpecifications.forPage(criteria), pageable),
+            pageable,
+            () -> searchTotals.count(criteria));
     return new PageResponse<>(
         directory.summarize(result.getContent()),
         result.getNumber(),
