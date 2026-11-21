@@ -1,0 +1,7 @@
+# Keep the build context to what the Dockerfile copies.
+target/
+.idea/
+*.iml
+.vscode/
+compose*.yaml
+README.md

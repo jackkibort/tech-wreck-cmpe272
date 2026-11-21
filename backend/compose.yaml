@@ -1,0 +1,63 @@
+# Employee API area file (Section 0.2), included by the root Compose file.
+services:
+  # Read-only Employee API. Only the edge reaches it (route /api/ on securehr.local).
+  api:
+    image: securehr/api:${IMAGE_TAG:-dev}
+    build:
+      context: .
+    restart: unless-stopped
+    environment:
+      # Section 0.9 names only. Database credentials come from Vault, never from here.
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI}
+      API_AUDIENCE: ${API_AUDIENCE:-securehr-api}
+      VAULT_ADDR: ${VAULT_ADDR}
+      API_VAULT_ROLE_ID: ${API_VAULT_ROLE_ID}
+      API_VAULT_SECRET_ID: ${API_VAULT_SECRET_ID}
+      MYSQL_HOST: ${MYSQL_HOST:-mysql}
+      MYSQL_PORT: ${MYSQL_PORT:-3306}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-employees}
+    depends_on:
+      mysql:
+        condition: service_healthy
+        # Lets this file be used on its own when mysql runs in another project.
+        required: false
+    networks:
+      - edge
+      - app
+      - data
+    # Container hardening: immutable filesystem, no privilege escalation, no capabilities.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  # One-shot schema migration (search indexes) using the migrator user, never the app user.
+  # Run explicitly: FLYWAY_PASSWORD=... docker compose --profile migrate run --rm api-migrate
+  # The password is supplied from the operator's shell at run time and never stored in .env.
+  api-migrate:
+    image: flyway/flyway:11.7.2-alpine
+    profiles:
+      - migrate
+    command: migrate
+    environment:
+      # The Flyway image bundles the MariaDB 2.x driver; these options are its equivalent of
+      # MySQL's sslMode=REQUIRED: encrypted, server certificate not CA-verified.
+      FLYWAY_URL: jdbc:mysql://${MYSQL_HOST:-mysql}:${MYSQL_PORT:-3306}/securehr_flyway?useSsl=true&trustServerCertificate=true
+      FLYWAY_USER: securehr_migrator
+      FLYWAY_PASSWORD: ${FLYWAY_PASSWORD:-}
+      # History table in its own schema so the original employees database gains no tables.
+      FLYWAY_DEFAULT_SCHEMA: securehr_flyway
+      FLYWAY_SCHEMAS: securehr_flyway
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+    volumes:
+      - ./src/main/resources/db/migration:/flyway/sql:ro
+    networks:
+      - data
+
+networks:
+  edge:
+  app:
+  data:

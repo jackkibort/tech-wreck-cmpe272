@@ -1,0 +1,6 @@
+# Developer entry point: runs the database and the Employee API together without the rest of
+# the stack. Each included file keeps its own relative paths.
+#   docker compose -p securehr-prod --env-file .env -f backend/compose.dev.yaml up -d
+include:
+  - ../database/compose.yaml
+  - compose.yaml
