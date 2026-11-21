@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GlobalExceptionHandler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">securehr-api</a> &gt; <a href="index.source.html" class="el_package">edu.sjsu.securehr.api.exception</a> &gt; <span class="el_source">GlobalExceptionHandler.java</span></div><h1>GlobalExceptionHandler.java</h1><pre class="source lang-java linenums">package edu.sjsu.securehr.api.exception;
+
+import edu.sjsu.securehr.api.audit.AuditEventType;
+import edu.sjsu.securehr.api.audit.AuditOutcome;
+import edu.sjsu.securehr.api.audit.AuditTrail;
+import edu.sjsu.securehr.api.security.CurrentUser;
+import edu.sjsu.securehr.api.web.RequestIdFilter;
+import jakarta.validation.ConstraintViolationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.validation.BindException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
+
+/**
+ * The single place where exceptions become HTTP responses, always in the Section 0.6 format.
+ * Messages are fixed, safe strings: internal details and stack traces are logged, never returned.
+ */
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+<span class="fc" id="L32">  private static final Logger LOG = LoggerFactory.getLogger(GlobalExceptionHandler.class);</span>
+
+  private final AuditTrail auditTrail;
+
+  /**
+   * Creates the handler.
+   *
+   * @param auditTrail records denials raised by service-layer policies
+   */
+<span class="fc" id="L41">  public GlobalExceptionHandler(AuditTrail auditTrail) {</span>
+<span class="fc" id="L42">    this.auditTrail = auditTrail;</span>
+<span class="fc" id="L43">  }</span>
+
+  /** Policy denial for a specific record: audited with the target employee. */
+  @ExceptionHandler(ResourceAccessDeniedException.class)
+  ResponseEntity&lt;ApiError&gt; accessDenied(ResourceAccessDeniedException e) {
+<span class="fc" id="L48">    auditTrail.record(</span>
+<span class="fc" id="L49">        AuditEventType.ACCESS_DENIED, AuditOutcome.DENIED, currentUser(), e.getTargetEmpNo());</span>
+<span class="fc" id="L50">    return error(HttpStatus.FORBIDDEN, e.getMessage());</span>
+  }
+
+  @ExceptionHandler(ResourceNotFoundException.class)
+  ResponseEntity&lt;ApiError&gt; notFound(ResourceNotFoundException e) {
+<span class="fc" id="L55">    return error(HttpStatus.NOT_FOUND, e.getMessage());</span>
+  }
+
+  @ExceptionHandler({
+    BindException.class,
+    MethodArgumentTypeMismatchException.class,
+    MissingServletRequestParameterException.class,
+    HandlerMethodValidationException.class,
+    ConstraintViolationException.class,
+    IllegalArgumentException.class
+  })
+  ResponseEntity&lt;ApiError&gt; badRequest(Exception e) {
+<span class="fc" id="L67">    return error(HttpStatus.BAD_REQUEST, &quot;One or more request parameters are invalid.&quot;);</span>
+  }
+
+  @ExceptionHandler(NoResourceFoundException.class)
+  ResponseEntity&lt;ApiError&gt; noRoute(NoResourceFoundException e) {
+<span class="nc" id="L72">    return error(HttpStatus.NOT_FOUND, &quot;Not found.&quot;);</span>
+  }
+
+  @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+  ResponseEntity&lt;ApiError&gt; methodNotAllowed(HttpRequestMethodNotSupportedException e) {
+<span class="nc" id="L77">    return error(HttpStatus.METHOD_NOT_ALLOWED, &quot;Method not allowed.&quot;);</span>
+  }
+
+  @ExceptionHandler(Exception.class)
+  ResponseEntity&lt;ApiError&gt; unexpected(Exception e) {
+<span class="nc" id="L82">    LOG.error(&quot;Unhandled exception&quot;, e);</span>
+<span class="nc" id="L83">    return error(HttpStatus.INTERNAL_SERVER_ERROR, &quot;An unexpected error occurred.&quot;);</span>
+  }
+
+  private static ResponseEntity&lt;ApiError&gt; error(HttpStatus status, String message) {
+<span class="fc" id="L87">    return ResponseEntity.status(status)</span>
+<span class="fc" id="L88">        .body(ApiError.of(status, message, RequestIdFilter.currentRequestId()));</span>
+  }
+
+  private static CurrentUser currentUser() {
+<span class="fc" id="L92">    Authentication auth = SecurityContextHolder.getContext().getAuthentication();</span>
+<span class="pc bpc" id="L93" title="2 of 4 branches missed.">    return auth != null &amp;&amp; auth.getPrincipal() instanceof Jwt jwt</span>
+<span class="fc" id="L94">        ? CurrentUser.fromToken(jwt)</span>
+<span class="nc" id="L95">        : null;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

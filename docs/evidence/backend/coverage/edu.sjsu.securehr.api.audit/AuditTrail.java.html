@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AuditTrail.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">securehr-api</a> &gt; <a href="index.source.html" class="el_package">edu.sjsu.securehr.api.audit</a> &gt; <span class="el_source">AuditTrail.java</span></div><h1>AuditTrail.java</h1><pre class="source lang-java linenums">package edu.sjsu.securehr.api.audit;
+
+import edu.sjsu.securehr.api.security.CurrentUser;
+import edu.sjsu.securehr.api.security.Role;
+import edu.sjsu.securehr.api.web.RequestIdFilter;
+import jakarta.servlet.http.HttpServletRequest;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.List;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.stereotype.Component;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+
+/**
+ * Entry point for recording audit events. Fills in the request context (path, client IP, request
+ * ID) and publishes an {@link AuditEvent}; {@link AuditLogListener} writes it (Observer pattern,
+ * Section 12.4). Producers never write audit logs directly.
+ */
+@Component
+public class AuditTrail {
+
+  private final ApplicationEventPublisher publisher;
+  private final Clock clock;
+
+  /**
+   * Creates the audit trail.
+   *
+   * @param publisher Spring application event publisher
+   * @param clock time source (UTC)
+   */
+<span class="fc" id="L33">  public AuditTrail(ApplicationEventPublisher publisher, Clock clock) {</span>
+<span class="fc" id="L34">    this.publisher = publisher;</span>
+<span class="fc" id="L35">    this.clock = clock;</span>
+<span class="fc" id="L36">  }</span>
+
+  /**
+   * Records an action by the authenticated caller.
+   *
+   * @param type event type
+   * @param outcome whether the action was allowed
+   * @param actor caller, or {@code null} if unknown
+   * @param targetEmpNo employee whose data was touched, if any
+   */
+  public void record(
+      AuditEventType type, AuditOutcome outcome, CurrentUser actor, Integer targetEmpNo) {
+<span class="fc" id="L48">    HttpServletRequest request = currentRequest();</span>
+    List&lt;String&gt; roles =
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">        actor == null ? List.of() : actor.roles().stream().map(Role::name).sorted().toList();</span>
+<span class="fc" id="L51">    publisher.publishEvent(</span>
+        new AuditEvent(
+<span class="fc" id="L53">            Instant.now(clock),</span>
+            type,
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">            actor == null ? null : actor.username(),</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">            actor == null ? null : actor.empNo(),</span>
+            roles,
+            targetEmpNo,
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">            request == null ? null : request.getRequestURI(),</span>
+            outcome,
+            // With forward-headers-strategy=native, Tomcat's RemoteIpValve has already resolved
+            // the client from X-Forwarded-For, trusting only internal proxies (the edge).
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">            request == null ? null : request.getRemoteAddr(),</span>
+<span class="fc" id="L64">            RequestIdFilter.currentRequestId()));</span>
+<span class="fc" id="L65">  }</span>
+
+  private static HttpServletRequest currentRequest() {
+<span class="fc" id="L68">    RequestAttributes attributes = RequestContextHolder.getRequestAttributes();</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">    return attributes instanceof ServletRequestAttributes servlet ? servlet.getRequest() : null;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

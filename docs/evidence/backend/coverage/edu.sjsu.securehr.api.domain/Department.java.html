@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Department.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">securehr-api</a> &gt; <a href="index.source.html" class="el_package">edu.sjsu.securehr.api.domain</a> &gt; <span class="el_source">Department.java</span></div><h1>Department.java</h1><pre class="source lang-java linenums">package edu.sjsu.securehr.api.domain;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import org.hibernate.annotations.Immutable;
+
+/** Row of the original {@code departments} table. */
+@Entity
+@Immutable
+@Table(name = &quot;departments&quot;)
+public class Department {
+
+  @Id
+  @Column(name = &quot;dept_no&quot;)
+  private String deptNo;
+
+  @Column(name = &quot;dept_name&quot;)
+  private String deptName;
+
+  /** Required by JPA. */
+<span class="fc" id="L23">  protected Department() {}</span>
+
+  public String getDeptNo() {
+<span class="fc" id="L26">    return deptNo;</span>
+  }
+
+  public String getDeptName() {
+<span class="fc" id="L30">    return deptName;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SecurityConfig.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">securehr-api</a> &gt; <a href="index.source.html" class="el_package">edu.sjsu.securehr.api.security</a> &gt; <span class="el_source">SecurityConfig.java</span></div><h1>SecurityConfig.java</h1><pre class="source lang-java linenums">package edu.sjsu.securehr.api.security;
+
+import edu.sjsu.securehr.api.audit.AuditEventType;
+import edu.sjsu.securehr.api.audit.AuditOutcome;
+import edu.sjsu.securehr.api.audit.AuditTrail;
+import edu.sjsu.securehr.api.exception.ApiErrorWriter;
+import edu.sjsu.securehr.api.exception.ResourceAccessDeniedException;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtDecoders;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.jwt.SupplierJwtDecoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
+
+/**
+ * Zero-trust request security (Sections 5.3 and 8.2). Every request must carry a valid Keycloak
+ * access token; URL rules give each endpoint an explicit role list and deny everything else.
+ * Per-record rules (self, manager scope, salary) are enforced by the service-layer policies.
+ */
+@Configuration
+@EnableConfigurationProperties(SecurityProperties.class)
+<span class="fc" id="L34">public class SecurityConfig {</span>
+
+  /** Business roles allowed to use the portal endpoints. AUDITOR is deliberately absent. */
+<span class="fc" id="L37">  private static final String[] PORTAL_ROLES = {</span>
+<span class="fc" id="L38">    Role.EMPLOYEE.name(), Role.MANAGER.name(), Role.HR_ADMIN.name()</span>
+  };
+
+  @Bean
+  SecurityFilterChain apiSecurity(
+      HttpSecurity http,
+      AuthenticationEntryPoint authenticationEntryPoint,
+      AccessDeniedHandler accessDeniedHandler)
+      throws Exception {
+<span class="fc" id="L47">    http.csrf(AbstractHttpConfigurer::disable) // Stateless bearer tokens; no cookies to forge.</span>
+<span class="fc" id="L48">        .sessionManagement(s -&gt; s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))</span>
+<span class="fc" id="L49">        .authorizeHttpRequests(auth -&gt;</span>
+            auth
+                // Internal only: the edge does not route it (Section 0.3).
+<span class="fc" id="L52">                .requestMatchers(HttpMethod.GET, &quot;/api/health&quot;)</span>
+<span class="fc" id="L53">                .permitAll()</span>
+<span class="fc" id="L54">                .requestMatchers(HttpMethod.GET, &quot;/api/export/employees&quot;)</span>
+<span class="fc" id="L55">                .hasRole(Role.HR_ADMIN.name())</span>
+<span class="fc" id="L56">                .requestMatchers(</span>
+                    HttpMethod.GET,
+                    &quot;/api/me&quot;,
+                    &quot;/api/employees&quot;,
+                    &quot;/api/employees/*&quot;,
+                    &quot;/api/employees/*/titles&quot;,
+                    &quot;/api/employees/*/salaries&quot;,
+                    &quot;/api/departments&quot;,
+                    &quot;/api/org/*&quot;)
+<span class="fc" id="L65">                .hasAnyRole(PORTAL_ROLES)</span>
+                // Deny by default (Section 8.2).
+<span class="fc" id="L67">                .anyRequest()</span>
+<span class="fc" id="L68">                .denyAll())</span>
+<span class="fc" id="L69">        .oauth2ResourceServer(oauth2 -&gt;</span>
+<span class="fc" id="L70">            oauth2</span>
+<span class="fc" id="L71">                .jwt(jwt -&gt; jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))</span>
+<span class="fc" id="L72">                .authenticationEntryPoint(authenticationEntryPoint))</span>
+<span class="fc" id="L73">        .exceptionHandling(e -&gt;</span>
+<span class="fc" id="L74">            e.authenticationEntryPoint(authenticationEntryPoint)</span>
+<span class="fc" id="L75">                .accessDeniedHandler(accessDeniedHandler));</span>
+<span class="fc" id="L76">    return http.build();</span>
+  }
+
+  /**
+   * Decoder that verifies signatures against the realm's published keys. Discovery is deferred to
+   * the first request, so the API starts even if Keycloak is not up yet.
+   */
+  @Bean
+  JwtDecoder jwtDecoder(SecurityProperties properties) {
+<span class="fc" id="L85">    return new SupplierJwtDecoder(() -&gt; {</span>
+<span class="nc" id="L86">      NimbusJwtDecoder decoder =</span>
+<span class="nc" id="L87">          (NimbusJwtDecoder) JwtDecoders.fromIssuerLocation(properties.issuerUri());</span>
+<span class="nc" id="L88">      decoder.setJwtValidator(TokenValidators.forApi(properties));</span>
+<span class="nc" id="L89">      return decoder;</span>
+    });
+  }
+
+  /** 401 for a missing or invalid token, in the Section 0.6 error format. */
+  @Bean
+  AuthenticationEntryPoint authenticationEntryPoint(ApiErrorWriter errorWriter) {
+<span class="fc" id="L96">    return (request, response, exception) -&gt;</span>
+<span class="fc" id="L97">        errorWriter.write(response, HttpStatus.UNAUTHORIZED, &quot;A valid access token is required.&quot;);</span>
+  }
+
+  /** 403 for an authenticated caller without the required role; every denial is audited. */
+  @Bean
+  AccessDeniedHandler accessDeniedHandler(ApiErrorWriter errorWriter, AuditTrail auditTrail) {
+<span class="fc" id="L103">    return (request, response, exception) -&gt; {</span>
+      Integer target =
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">          exception instanceof ResourceAccessDeniedException denied</span>
+<span class="nc" id="L106">              ? denied.getTargetEmpNo()</span>
+<span class="fc" id="L107">              : null;</span>
+<span class="fc" id="L108">      auditTrail.record(</span>
+<span class="fc" id="L109">          AuditEventType.ACCESS_DENIED, AuditOutcome.DENIED, currentUser(request), target);</span>
+<span class="fc" id="L110">      errorWriter.write(</span>
+          response, HttpStatus.FORBIDDEN, &quot;You are not allowed to perform this action.&quot;);
+<span class="fc" id="L112">    };</span>
+  }
+
+  private static JwtAuthenticationConverter jwtAuthenticationConverter() {
+<span class="fc" id="L116">    JwtAuthenticationConverter converter = new JwtAuthenticationConverter();</span>
+<span class="fc" id="L117">    converter.setJwtGrantedAuthoritiesConverter(new RealmRoleConverter());</span>
+<span class="fc" id="L118">    converter.setPrincipalClaimName(CurrentUser.USERNAME_CLAIM);</span>
+<span class="fc" id="L119">    return converter;</span>
+  }
+
+  private static CurrentUser currentUser(jakarta.servlet.http.HttpServletRequest request) {
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">    return request.getUserPrincipal() instanceof Authentication auth</span>
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">            &amp;&amp; auth.getPrincipal() instanceof Jwt jwt</span>
+<span class="fc" id="L125">        ? CurrentUser.fromToken(jwt)</span>
+<span class="nc" id="L126">        : null;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

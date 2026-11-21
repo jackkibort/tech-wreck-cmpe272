@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Dates.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">securehr-api</a> &gt; <a href="index.source.html" class="el_package">edu.sjsu.securehr.api.domain</a> &gt; <span class="el_source">Dates.java</span></div><h1>Dates.java</h1><pre class="source lang-java linenums">package edu.sjsu.securehr.api.domain;
+
+import java.time.LocalDate;
+
+/** Dataset date conventions (Section 7.2). */
+public final class Dates {
+
+  /** The dataset marks the current row of every history table with this {@code to_date}. */
+<span class="fc" id="L9">  public static final LocalDate CURRENT = LocalDate.of(9999, 1, 1);</span>
+
+  private Dates() {}
+
+  /**
+   * Converts a dataset {@code to_date} to its API form, where {@code null} means &quot;current&quot;.
+   *
+   * @param toDate stored end date (may be {@code null} in {@code titles})
+   * @return the end date, or {@code null} for the current row
+   */
+  public static LocalDate apiToDate(LocalDate toDate) {
+<span class="pc bpc" id="L20" title="1 of 4 branches missed.">    return toDate == null || CURRENT.equals(toDate) ? null : toDate;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

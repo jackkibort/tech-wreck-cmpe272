@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SalaryPolicy.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">securehr-api</a> &gt; <a href="index.source.html" class="el_package">edu.sjsu.securehr.api.security.policy</a> &gt; <span class="el_source">SalaryPolicy.java</span></div><h1>SalaryPolicy.java</h1><pre class="source lang-java linenums">package edu.sjsu.securehr.api.security.policy;
+
+import edu.sjsu.securehr.api.exception.ResourceAccessDeniedException;
+import edu.sjsu.securehr.api.security.CurrentUser;
+import edu.sjsu.securehr.api.security.Role;
+import org.springframework.stereotype.Component;
+
+/**
+ * Who may read salary history (Section 8.2): the employee themself and HR Admin only. Managers are
+ * deliberately excluded, even for their own team.
+ */
+@Component
+<span class="fc" id="L13">public class SalaryPolicy {</span>
+
+  /**
+   * Checks salary access.
+   *
+   * @param user the caller
+   * @param targetEmpNo the employee whose salary is requested
+   * @throws ResourceAccessDeniedException if the caller may not see the salary
+   */
+  public void authorize(CurrentUser user, int targetEmpNo) {
+<span class="fc bfc" id="L23" title="All 4 branches covered.">    if (!user.isEmployee(targetEmpNo) &amp;&amp; !user.hasRole(Role.HR_ADMIN)) {</span>
+<span class="fc" id="L24">      throw new ResourceAccessDeniedException(</span>
+<span class="fc" id="L25">          &quot;You are not allowed to view this employee's salary.&quot;, targetEmpNo);</span>
+    }
+<span class="fc" id="L27">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>

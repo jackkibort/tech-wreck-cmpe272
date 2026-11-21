@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExportController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">securehr-api</a> &gt; <a href="index.source.html" class="el_package">edu.sjsu.securehr.api.controller</a> &gt; <span class="el_source">ExportController.java</span></div><h1>ExportController.java</h1><pre class="source lang-java linenums">package edu.sjsu.securehr.api.controller;
+
+import edu.sjsu.securehr.api.dto.EmployeeSearchCriteria;
+import edu.sjsu.securehr.api.security.CurrentUser;
+import edu.sjsu.securehr.api.service.EmployeeExport;
+import edu.sjsu.securehr.api.service.ExportService;
+import jakarta.validation.Valid;
+import java.nio.charset.StandardCharsets;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+/** {@code GET /api/export/employees}: CSV of the current search filters, HR Admin only. */
+@RestController
+public class ExportController {
+
+  /** Tells the caller that more rows matched than the export cap allows. */
+  static final String TRUNCATED_HEADER = &quot;X-Export-Truncated&quot;;
+
+<span class="fc" id="L23">  private static final MediaType TEXT_CSV = new MediaType(&quot;text&quot;, &quot;csv&quot;, StandardCharsets.UTF_8);</span>
+
+  private final ExportService exportService;
+
+  /**
+   * Creates the controller.
+   *
+   * @param exportService export use case
+   */
+<span class="fc" id="L32">  public ExportController(ExportService exportService) {</span>
+<span class="fc" id="L33">    this.exportService = exportService;</span>
+<span class="fc" id="L34">  }</span>
+
+  @GetMapping(&quot;/api/export/employees&quot;)
+  ResponseEntity&lt;String&gt; export(CurrentUser user, @Valid EmployeeSearchCriteria criteria) {
+<span class="fc" id="L38">    EmployeeExport export = exportService.export(user, criteria);</span>
+<span class="fc" id="L39">    return ResponseEntity.ok()</span>
+<span class="fc" id="L40">        .contentType(TEXT_CSV)</span>
+<span class="fc" id="L41">        .header(</span>
+            HttpHeaders.CONTENT_DISPOSITION,
+<span class="fc" id="L43">            ContentDisposition.attachment().filename(&quot;employees-export.csv&quot;).build().toString())</span>
+<span class="fc" id="L44">        .header(TRUNCATED_HEADER, Boolean.toString(export.truncated()))</span>
+<span class="fc" id="L45">        .body(export.csv());</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.16.202610240946</span></div></body></html>
