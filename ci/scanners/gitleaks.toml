@@ -1,0 +1,16 @@
+# gitleaks configuration for the secrets scan (Section 11.2, stage 2).
+# Starts from gitleaks' built-in rules; additions below must say why.
+title = "SecureHR secrets scan"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Files that contain no secrets but trip the generic rules"
+paths = [
+  # Jenkins plugin versions such as "oic-auth:4.737.vb_3d1a_0e7cf0b_" look like an API key
+  # (the word "auth" next to a random-looking string). The file holds only plugin names.
+  '''^ci/jenkins/plugins\.txt$''',
+  # Test and coverage reports copied in as evidence (Section 13.5); generated HTML, not code.
+  '''^docs/evidence/''',
+]

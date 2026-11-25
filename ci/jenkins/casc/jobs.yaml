@@ -1,0 +1,40 @@
+# The one pipeline job (Section 11.4): a multibranch pipeline over the GitHub repository.
+# It builds every branch and every pull request with /ci/Jenkinsfile and reports the result
+# back to GitHub as a commit status, which branch protection on main requires.
+jobs:
+  - script: >
+      multibranchPipelineJob('securehr') {
+        displayName('SecureHR')
+        description('Builds, tests and scans every branch and pull request (Section 11.2).')
+        branchSources {
+          branchSource {
+            source {
+              github {
+                id('securehr-github')
+                // The team's GitHub repository (Section 0.11).
+                repoOwner('jackkibort')
+                repository('tech-wreck-cmpe272')
+                repositoryUrl('https://github.com/jackkibort/tech-wreck-cmpe272')
+                configuredByUrl(false)
+                credentialsId('github-token')
+                traits {
+                  // Branches that also have a pull request are built once, as the pull request.
+                  gitHubBranchDiscovery { strategyId(1) }
+                  // Pull requests are built merged with main, so the check reflects the result.
+                  gitHubPullRequestDiscovery { strategyId(1) }
+                }
+              }
+            }
+          }
+        }
+        factory {
+          workflowBranchProjectFactory { scriptPath('ci/Jenkinsfile') }
+        }
+        triggers {
+          // Fallback when the smee relay is down: rescan GitHub every 2 minutes (Section 11.4).
+          periodicFolderTrigger { interval('2m') }
+        }
+        orphanedItemStrategy {
+          discardOldItems { numToKeep(10) }
+        }
+      }

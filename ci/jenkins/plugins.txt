@@ -1,0 +1,18 @@
+# Jenkins plugins, installed at image build time by jenkins-plugin-cli (Section 11.4).
+# Versions are pinned so the image rebuilds identically; dependencies resolve automatically.
+configuration-as-code:2147.v8a_8d38668c72
+coverage:4.3627.v8c2b_efe6d608
+docker-workflow:653.v2f2c08eff0ec
+git:5.11.0
+github-branch-source:1988.v87ea_66346560
+github:1.47.0
+htmlpublisher:429
+job-dsl:3752.vb_199526b_20c3
+junit:1458.1460.vd53b_087eeb_2c
+matrix-auth:3.3
+oic-auth:4.737.vb_3d1a_0e7cf0b_
+pipeline-graph-view:1053.v9df19e6ceed2
+timestamper:1.30
+warnings-ng:13.10365.v85cd7a_c8110b_
+workflow-aggregator:608.v67378e9d3db_1
+ws-cleanup:0.49

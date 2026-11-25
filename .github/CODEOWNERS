@@ -1,0 +1,43 @@
+# Folder owners (Section 14 of the implementation plan). GitHub requests the owner's review on
+# every pull request that touches their folder, and branch protection on main requires it.
+# Later lines win, so the catch-all comes first. Maintained by Samhitha (/ci).
+
+# Anything not listed below (root files, new folders) needs any one teammate.
+*                           @jackkibort @SabariIyyappan @acs6454 @samhithabanda
+
+# Jack: identity, directory, secrets, Document API
+/directory/                 @jackkibort
+/identity/                  @jackkibort
+/secrets/                   @jackkibort
+/docs-api/                  @jackkibort
+/api-spec/documents-api.yaml @jackkibort
+
+# Sabari: Employee API and database
+/backend/                   @SabariIyyappan
+/database/                  @SabariIyyappan
+/api-spec/employee-api.yaml @SabariIyyappan
+
+# Arthi: frontend, edge, Compose and the root README
+/frontend/                  @acs6454
+/edge/                      @acs6454
+/deploy/compose/            @acs6454
+/README.md                  @acs6454
+/.gitignore                 @acs6454
+
+# Samhitha: CI/CD, observability, end-to-end and performance tests, AWS guide
+/ci/                        @samhithabanda
+/observability/             @samhithabanda
+/e2e/                       @samhithabanda
+/perf/                      @samhithabanda
+/deploy/aws/                @samhithabanda
+/.github/                   @samhithabanda
+
+# Evidence: each owner writes only their own subfolder.
+/docs/evidence/backend/     @SabariIyyappan
+/docs/evidence/docs-api/    @jackkibort
+/docs/evidence/frontend/    @acs6454
+/docs/evidence/edge/        @acs6454
+/docs/evidence/ci/          @samhithabanda
+/docs/evidence/observability/ @samhithabanda
+/docs/evidence/e2e/         @samhithabanda
+/docs/evidence/perf/        @samhithabanda
