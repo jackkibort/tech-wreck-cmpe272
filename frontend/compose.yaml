@@ -1,0 +1,25 @@
+# Frontend area file (Section 0.2), included by deploy/compose/compose.yaml. Owner: Arthi.
+services:
+  # Portal static files. Only the edge reaches it (route / on securehr.local).
+  ui:
+    image: securehr/ui:${IMAGE_TAG:-dev}
+    build:
+      context: .
+    restart: unless-stopped
+    environment:
+      # Public values only; written to /config.json at start-up (Section 0.9).
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI}
+      PORTAL_CLIENT_ID: ${PORTAL_CLIENT_ID:-securehr-portal}
+    networks:
+      - edge
+    # Container hardening: immutable filesystem, no privilege escalation, no capabilities.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+networks:
+  edge:
