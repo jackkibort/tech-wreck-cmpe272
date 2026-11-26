@@ -10,6 +10,7 @@ shared networks and the list of area files; every service is defined in its owne
 |---|---|
 | `compose.yaml` | Declares the shared networks and includes each area's `compose.yaml` |
 | `../../.env.example` | Template for the git-ignored root `.env` (Section 0.9) |
+| `reset-demo.sh` | Demo reset procedure (Section 13.3) |
 
 ## Included area files
 
@@ -17,6 +18,8 @@ shared networks and the list of area files; every service is defined in its owne
 |---|---|---|
 | `database/compose.yaml` | mysql | Sabari |
 | `backend/compose.yaml` | api, api-migrate (profile `migrate`) | Sabari |
+| `edge/compose.yaml` | edge | Arthi |
+| `frontend/compose.yaml` | ui | Arthi |
 
 Other areas are added to the `include:` list as their Compose file lands on main.
 
@@ -56,3 +59,16 @@ docker compose -p securehr-prod --env-file .env -f deploy/compose/compose.yaml c
   shared file (Section 20, "Merge conflicts").
 - **Project name on the command line.** The same files serve `securehr-prod` and
   `securehr-staging` (Section 0.11), so the name is passed with `-p` rather than fixed in the file.
+
+## Demo reset (Section 13.3)
+
+Before a demo or rehearsal, restore the starting state (target: under 2 minutes):
+
+```bash
+deploy/compose/reset-demo.sh
+```
+
+It (1) clears Keycloak brute-force lockouts in the `securehr` realm, so demo.employee2 can log in
+again after the lockout demo, and (2) restarts the edge, which empties the rate-limit counters.
+Then restore the demo documents with the docs-api seed step described in `/docs-api/README.md`
+(Jack), so the payslip and review deleted or uploaded during S4 are back to their seeded state.

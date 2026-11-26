@@ -13,6 +13,9 @@ include:
   # Sabari: employees database (mysql) and Employee API (api, api-migrate)
   - ../../database/compose.yaml
   - ../../backend/compose.yaml
+  # Arthi: edge (NGINX + ModSecurity) and portal static files
+  - ../../edge/compose.yaml
+  - ../../frontend/compose.yaml
 
 # Shared Docker networks (Section 4.2). Area files list the same names, so Compose merges them
 # into one network per name for the whole project.
