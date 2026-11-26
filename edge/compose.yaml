@@ -1,0 +1,47 @@
+# Edge area file (Section 0.2), included by deploy/compose/compose.yaml. Owner: Arthi.
+services:
+  # The only service that publishes host ports. Terminates TLS, applies the firewall and rate
+  # limits, and routes by hostname and path (Section 0.3).
+  edge:
+    image: securehr/edge:${IMAGE_TAG:-dev}
+    build:
+      context: .
+    restart: unless-stopped
+    ports:
+      - "443:443"
+      - "80:80"
+    environment:
+      SECUREHR_DOMAIN: ${SECUREHR_DOMAIN:-securehr.local}
+      # "" for securehr-prod; the staging override sets "staging." (Section 11.3).
+      EDGE_HOST_PREFIX: ""
+      # Public HTTPS port, used in redirects and X-Forwarded-Port.
+      EDGE_PUBLIC_PORT: "443"
+      # Keycloak origin allowed by the portal's Content-Security-Policy.
+      EDGE_AUTH_ORIGIN: https://auth.${SECUREHR_DOMAIN:-securehr.local}
+      # Per-IP rate limits (Section 8.4). A load test from one machine may raise EDGE_API_RATE.
+      EDGE_API_RATE: ${EDGE_API_RATE:-20r/s}
+      EDGE_SENSITIVE_RATE: 10r/m
+    volumes:
+      # mkcert output from edge/scripts/make-certs.sh (git-ignored).
+      - ./certs:/etc/nginx/certs:ro
+    # Lets the unprivileged NGINX user bind 443/80 inside this container only. Needed because
+    # services call https://auth.securehr.local on the internal network (see Dockerfile).
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      edge:
+        # Inside Docker the public hostnames resolve to the edge, so the APIs validate tokens
+        # against the same issuer URL the browser uses (Section 0.5).
+        aliases:
+          - ${SECUREHR_DOMAIN:-securehr.local}
+          - auth.${SECUREHR_DOMAIN:-securehr.local}
+          - ci.${SECUREHR_DOMAIN:-securehr.local}
+          - grafana.${SECUREHR_DOMAIN:-securehr.local}
+          - directory.${SECUREHR_DOMAIN:-securehr.local}
+
+networks:
+  edge:

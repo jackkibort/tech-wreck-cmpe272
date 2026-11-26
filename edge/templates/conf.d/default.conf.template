@@ -1,0 +1,232 @@
+# SecureHR edge: hostname and path routing (Section 0.3), TLS (8.4), rate limits, request IDs.
+#
+# Rendered by the image's envsubst step: ${NAME} is an environment variable set in compose.yaml;
+# bare $name is an NGINX variable. Hostnames are built from SECUREHR_DOMAIN and EDGE_HOST_PREFIX
+# ("" for securehr-prod, "staging." for securehr-staging, Section 11.3).
+
+server_tokens off;
+# server_tokens only hides the version; remove the Server header completely (Section 8.4).
+more_clear_headers Server;
+
+# Docker's embedded DNS resolves service names at request time, so the edge starts even when
+# an upstream (for example Jenkins) is not running yet; that route returns 502 until it is.
+# The resolver itself is set in nginx.conf by the image from /etc/resolv.conf.
+
+# ---------------------------------------------------------------------------------------------
+# Request ID (Section 0.3): keep a well-formed incoming X-Request-ID, otherwise generate one.
+# The pattern check stops clients from injecting arbitrary text into every downstream log.
+map $http_x_request_id $securehr_request_id {
+    default                 $request_id;
+    "~^[A-Za-z0-9._-]{8,64}$" $http_x_request_id;
+}
+
+# WebSocket upgrade (Grafana live, Keycloak admin console).
+map $http_upgrade $securehr_connection_upgrade {
+    default upgrade;
+    ""      close;
+}
+
+# ---------------------------------------------------------------------------------------------
+# Rate limits per client IP (Section 8.4). Rejected requests get 429 and are logged as
+# RATE_LIMITED (logging.conf).
+#   api:        general Employee/Document API traffic
+#   web:        static portal files and the tool UIs (many small requests per page)
+#   sensitive:  CSV export
+#   login:      Keycloak login form posts (brute force is also locked out by Keycloak itself)
+#   upload:     document uploads
+# Only POSTs count toward login/upload: an empty key is not limited.
+map $request_method $securehr_post_key {
+    default "";
+    POST    $binary_remote_addr;
+}
+
+limit_req_zone $binary_remote_addr zone=api:10m       rate=${EDGE_API_RATE};
+limit_req_zone $binary_remote_addr zone=web:10m       rate=50r/s;
+limit_req_zone $binary_remote_addr zone=sensitive:10m rate=${EDGE_SENSITIVE_RATE};
+limit_req_zone $securehr_post_key  zone=login:10m     rate=${EDGE_SENSITIVE_RATE};
+limit_req_zone $securehr_post_key  zone=upload:10m    rate=${EDGE_SENSITIVE_RATE};
+limit_req_status 429;
+limit_req_log_level warn;
+
+# Default request body cap; the documents route raises it to the 10 MB upload limit.
+client_max_body_size 1m;
+
+# ---------------------------------------------------------------------------------------------
+# TLS for every server on 443 (Section 8.4): TLS 1.2/1.3 only, Mozilla "intermediate" ciphers.
+# One mkcert certificate covers every hostname (edge/CERTIFICATES.md).
+ssl_certificate     /etc/nginx/certs/securehr.pem;
+ssl_certificate_key /etc/nginx/certs/securehr-key.pem;
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+ssl_prefer_server_ciphers off;
+ssl_session_timeout 1d;
+ssl_session_cache shared:SecureHrTLS:10m;
+ssl_session_tickets off;
+
+# Headers sent to every upstream (Section 0.3). X-Forwarded-For is overwritten, not appended:
+# the edge is the first hop, so anything a client sends in it would be spoofed.
+proxy_http_version 1.1;
+proxy_set_header Host              $host;
+proxy_set_header X-Request-ID      $securehr_request_id;
+proxy_set_header X-Forwarded-For   $remote_addr;
+proxy_set_header X-Real-IP         $remote_addr;
+proxy_set_header X-Forwarded-Proto https;
+proxy_set_header X-Forwarded-Host  $host;
+proxy_set_header X-Forwarded-Port  ${EDGE_PUBLIC_PORT};
+proxy_set_header Upgrade           $http_upgrade;
+proxy_set_header Connection        $securehr_connection_upgrade;
+proxy_redirect off;
+proxy_read_timeout 120s;
+
+# ---------------------------------------------------------------------------------------------
+# Port 80: health check for the container, everything else redirects to HTTPS (Section 8.4).
+server {
+    listen ${PORT} default_server;
+    server_name _;
+
+    location / {
+        return 301 https://$host:${EDGE_PUBLIC_PORT}$request_uri;
+    }
+}
+
+# Unknown hostnames on 443 get no content. Also serves the image's container health check,
+# which calls https://localhost/healthz.
+server {
+    listen ${SSL_PORT} ssl default_server;
+    server_name _;
+    include includes/securehr-security-headers.conf;
+
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "OK";
+    }
+
+    location / {
+        return 421;
+    }
+}
+
+# ---------------------------------------------------------------------------------------------
+# Portal and APIs: securehr.local
+server {
+    listen ${SSL_PORT} ssl;
+    http2 on;
+    server_name ${EDGE_HOST_PREFIX}${SECUREHR_DOMAIN};
+
+    include includes/securehr-security-headers.conf;
+    include includes/securehr-portal-csp.conf;
+    include includes/securehr-api-errors.conf;
+
+    # Internal health endpoints are never routed publicly (Section 0.3).
+    location = /api/health           { return 404; }
+    location = /api/documents/health { return 404; }
+
+    # Document API (Section 10): uploads up to 10 MB (Section 8.4).
+    location ^~ /api/documents {
+        client_max_body_size 10m;
+        limit_req zone=api burst=40 nodelay;
+        limit_req zone=upload burst=5 nodelay;
+        set $securehr_upstream http://docs-api:8080;
+        proxy_pass $securehr_upstream;
+    }
+
+    # CSV export: stricter limit (Section 8.4).
+    location ^~ /api/export/ {
+        limit_req zone=api burst=40 nodelay;
+        limit_req zone=sensitive burst=5 nodelay;
+        set $securehr_upstream http://api:8080;
+        proxy_pass $securehr_upstream;
+    }
+
+    # Everything else under /api/ goes to the Employee API.
+    location ^~ /api/ {
+        limit_req zone=api burst=40 nodelay;
+        set $securehr_upstream http://api:8080;
+        proxy_pass $securehr_upstream;
+    }
+
+    # React single-page app.
+    location / {
+        limit_req zone=web burst=100 nodelay;
+        set $securehr_upstream http://ui:8080;
+        proxy_pass $securehr_upstream;
+    }
+}
+
+# ---------------------------------------------------------------------------------------------
+# Keycloak: auth.securehr.local
+server {
+    listen ${SSL_PORT} ssl;
+    http2 on;
+    server_name ${EDGE_HOST_PREFIX}auth.${SECUREHR_DOMAIN};
+
+    include includes/securehr-security-headers.conf;
+
+    # Keycloak sends large cookies and headers during login.
+    proxy_buffer_size 128k;
+    proxy_buffers 4 256k;
+    proxy_busy_buffers_size 256k;
+
+    # Login form posts (password and OTP steps): strict per-IP limit against password guessing.
+    location ~ ^/realms/[^/]+/login-actions/ {
+        limit_req zone=web burst=100 nodelay;
+        limit_req zone=login burst=10 nodelay;
+        set $securehr_upstream http://keycloak:8080;
+        proxy_pass $securehr_upstream;
+    }
+
+    location / {
+        limit_req zone=web burst=100 nodelay;
+        set $securehr_upstream http://keycloak:8080;
+        proxy_pass $securehr_upstream;
+    }
+}
+
+# ---------------------------------------------------------------------------------------------
+# Jenkins: ci.securehr.local
+server {
+    listen ${SSL_PORT} ssl;
+    http2 on;
+    server_name ${EDGE_HOST_PREFIX}ci.${SECUREHR_DOMAIN};
+
+    include includes/securehr-security-headers.conf;
+
+    location / {
+        limit_req zone=web burst=100 nodelay;
+        set $securehr_upstream http://jenkins:8080;
+        proxy_pass $securehr_upstream;
+    }
+}
+
+# ---------------------------------------------------------------------------------------------
+# Grafana: grafana.securehr.local
+server {
+    listen ${SSL_PORT} ssl;
+    http2 on;
+    server_name ${EDGE_HOST_PREFIX}grafana.${SECUREHR_DOMAIN};
+
+    include includes/securehr-security-headers.conf;
+
+    location / {
+        limit_req zone=web burst=100 nodelay;
+        set $securehr_upstream http://grafana:3000;
+        proxy_pass $securehr_upstream;
+    }
+}
+
+# ---------------------------------------------------------------------------------------------
+# LLDAP admin UI: directory.securehr.local (requires the LLDAP admin login)
+server {
+    listen ${SSL_PORT} ssl;
+    http2 on;
+    server_name ${EDGE_HOST_PREFIX}directory.${SECUREHR_DOMAIN};
+
+    include includes/securehr-security-headers.conf;
+
+    location / {
+        limit_req zone=web burst=100 nodelay;
+        set $securehr_upstream http://ldap:17170;
+        proxy_pass $securehr_upstream;
+    }
+}
