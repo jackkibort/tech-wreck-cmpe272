@@ -1,0 +1,70 @@
+# Observability area file (Section 0.2), included by the root Compose file:
+# Alloy collects every container's stdout, Loki stores it, Grafana shows dashboards and alerts.
+services:
+  # Log storage. Only Alloy (writes) and Grafana (reads) reach it, on the logs network.
+  loki:
+    image: grafana/loki:3.7.11
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ./loki/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+    # No healthcheck: the image has no shell or HTTP client. Alloy retries pushes and Grafana
+    # retries queries until Loki is ready, so start order needs no health gate.
+    networks:
+      - logs
+
+  # Log shipper: reads container logs from the Docker engine and pushes them to Loki with the
+  # two allowed labels, service and log_type (Section 0.10).
+  alloy:
+    image: grafana/alloy:v1.22.0
+    restart: unless-stopped
+    command: ["run", "--server.http.listen-addr=0.0.0.0:12345", "--storage.path=/var/lib/alloy/data", "/etc/alloy/config.alloy"]
+    environment:
+      LOKI_URL: ${LOKI_URL:-http://loki:3100}
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+      # Read-only access to the Docker engine, used only to list containers and read their logs.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      loki:
+        condition: service_started
+    networks:
+      - logs
+
+  # Dashboards and alerts, provisioned from files. Reached only through the edge at
+  # https://grafana.securehr.local; sign-in is Keycloak only.
+  grafana:
+    image: grafana/grafana:13.3.2
+    restart: unless-stopped
+    environment:
+      SECUREHR_DOMAIN: ${SECUREHR_DOMAIN:-securehr.local}
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI}
+      GRAFANA_OIDC_CLIENT_SECRET: ${GRAFANA_OIDC_CLIENT_SECRET}
+      LOKI_URL: ${LOKI_URL:-http://loki:3100}
+      GF_PATHS_CONFIG: /etc/grafana/securehr.ini
+    volumes:
+      - ./grafana/grafana.ini:/etc/grafana/securehr.ini:ro
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      loki:
+        condition: service_started
+    networks:
+      - edge
+      - logs
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  loki-data:
+  alloy-data:
+  grafana-data:
+
+networks:
+  edge:
+  logs:

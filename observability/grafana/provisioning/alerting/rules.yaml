@@ -1,0 +1,104 @@
+# Security alert rules (Section 11.5), evaluated by Grafana every minute against Loki.
+# They show as firing under Alerting → Alert rules and on the Audit dashboards' folder.
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: securehr-security
+    folder: Audit
+    interval: 1m
+    rules:
+      # Someone is probing for records they may not see (IDOR attempts, Section 8.6).
+      - uid: securehr-access-denied-burst
+        title: More than 10 access denials from one user in 1 minute
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange: { from: 60, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              expr: >-
+                sum by (actor_username) (count_over_time({log_type="audit"} | json
+                | event_type="ACCESS_DENIED" [1m]))
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [10] }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels: { severity: high }
+        annotations:
+          summary: "{{ $labels.actor_username }} was denied access {{ $values.A }} times in 1 minute"
+          description: Check the Security overview dashboard for the resources requested.
+
+      # Password guessing against one account (brute force, Section 8.3).
+      - uid: securehr-login-failure-burst
+        title: More than 5 login failures for one username in 5 minutes
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              expr: >-
+                sum by (actor_username) (count_over_time({log_type="audit"} | json
+                | event_type="LOGIN_FAILURE" [5m]))
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [5] }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels: { severity: high }
+        annotations:
+          summary: "{{ $values.A }} failed logins for {{ $labels.actor_username }} in 5 minutes"
+          description: Possible password guessing. Keycloak locks the account after 5 failures.
+
+      # Bulk data leaving, or records destroyed, outside business hours (8am–6pm, Pacific).
+      - uid: securehr-out-of-hours-export-delete
+        title: Export or document delete outside 8am–6pm
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              # The hour comes from the event's own UTC timestamp. LogQL can't convert time
+              # zones, so business hours are written in UTC: 8am-6pm PST (UTC-8) is 16:00-02:00
+              # UTC, making 02:00-15:59 UTC "outside". During daylight saving time (UTC-7)
+              # change 2 and 16 to 1 and 15.
+              expr: >-
+                sum by (event_type, actor_username) (count_over_time({log_type="audit"} | json
+                | event_type=~"EXPORT|DOC_DELETE"
+                | label_format utc_hour=`{{ date "15" (toDate "2006-01-02T15:04:05.999999999Z07:00" .timestamp) }}`
+                | utc_hour >= 2 and utc_hour < 16 [5m]))
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels: { severity: medium }
+        annotations:
+          summary: "{{ $labels.event_type }} by {{ $labels.actor_username }} outside business hours"
+          description: Confirm with the user that the export or deletion was expected.

@@ -1,0 +1,66 @@
+// Grafana Alloy: ships every SecureHR container's stdout to Loki (Section 11).
+//
+// Labels are exactly service and log_type (Section 0.10). Usernames, emp_no values and request
+// IDs stay inside the log line, never in labels, so Loki's index holds no personal data.
+
+// Find containers on the local Docker engine.
+discovery.docker "containers" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "10s"
+}
+
+// Keep only the SecureHR Compose projects and name each stream after its Compose service.
+discovery.relabel "securehr" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    regex         = "securehr-(prod|staging)"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+
+  // Staging services share names with production; prefix them so the two never mix while the
+  // label set stays service and log_type only (Section 11.3).
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project", "service"]
+    regex         = "securehr-staging;(.+)"
+    target_label  = "service"
+    replacement   = "staging-${1}"
+  }
+}
+
+loki.source.docker "securehr" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.securehr.output
+  forward_to = [loki.process.log_type.receiver]
+}
+
+// log_type comes from the JSON line when the service writes one (the two APIs: "audit" or
+// "app"). Lines that aren't JSON, or have no log_type, are "app".
+loki.process "log_type" {
+  stage.json {
+    expressions = { log_type = "log_type" }
+  }
+
+  stage.template {
+    source   = "log_type"
+    template = "{{ if eq .Value \"audit\" }}audit{{ else }}app{{ end }}"
+  }
+
+  stage.labels {
+    values = { log_type = "" }
+  }
+
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = string.format("%s/loki/api/v1/push", sys.env("LOKI_URL"))
+  }
+}
