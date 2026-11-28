@@ -1,0 +1,29 @@
+# SecureHR root Compose file (owner: Arthi; Section 14 "Compose split").
+#
+# It declares the shared networks and includes one Compose file per area folder. Each owner edits
+# only their own area file; this file changes only when a new area file is added.
+#
+# Run from the repository root so the root .env is used (Section 0.11):
+#   docker compose -p securehr-prod --env-file .env -f deploy/compose/compose.yaml up -d
+#
+# Only the edge publishes host ports (Section 0.2). Every other service is reachable only on the
+# internal networks below.
+
+include:
+  # Sabari: employees database (mysql) and Employee API (api, api-migrate)
+  - ../../database/compose.yaml
+  - ../../backend/compose.yaml
+
+# Shared Docker networks (Section 4.2). Area files list the same names, so Compose merges them
+# into one network per name for the whole project.
+networks:
+  # Everything the edge proxies to; the only network with a published host port.
+  edge:
+  # Secrets (Vault) and token-signing traffic between api, docs-api, keycloak and jenkins.
+  app:
+  # Databases; never attached to the edge.
+  data:
+  # Keycloak to LDAP only.
+  directory:
+  # Log pipeline (alloy, loki, grafana).
+  logs:
