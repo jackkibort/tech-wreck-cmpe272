@@ -1,6 +1,6 @@
 # Jenkins controller for SecureHR (Section 11.4): plugins and configuration as code baked in.
 
-# The Docker CLI and its buildx plugin, copied from the official image rather than installed
+# The Docker CLI and its buildx and compose plugins, copied from the official image rather than installed
 # from a package repository, so the version is pinned in one place.
 FROM docker:29.10.1-cli AS docker-cli
 
@@ -9,6 +9,8 @@ FROM jenkins/jenkins:2.580.2-lts-jdk21
 USER root
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/libexec/docker/cli-plugins/docker-buildx
+# Compose, for the staging deploy and production promotion (stages 11 and 14).
+COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose
 COPY --chmod=0755 docker-socket-entrypoint.sh /usr/local/bin/docker-socket-entrypoint.sh
 
 USER jenkins

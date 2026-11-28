@@ -9,7 +9,7 @@ it can be rebuilt from scratch. There is no manual setup in the Jenkins UI.
 
 | Path | Purpose |
 |---|---|
-| `Jenkinsfile` | The pipeline: stages 1–10 of Section 11.2 |
+| `Jenkinsfile` | The pipeline: all 14 stages of Section 11.2 |
 | `compose.yaml` | Area Compose file: the `jenkins` and `smee` services (Section 0.2) |
 | `compose.local.yaml` | Local development only: publishes Jenkins on `http://localhost:8090` before the edge exists |
 | `jenkins/Dockerfile` | Jenkins LTS plus the Docker CLI, pinned plugins and configuration as code |
@@ -41,12 +41,16 @@ To change a tool version, edit the `environment` block at the top of the `Jenkin
 | 8 | Dependency scan | Trivy `0.76.2` filesystem scan | High or critical with a fix available (TC-PIPE-02) |
 | 9 | Build images | `docker build` for `securehr/api`, `securehr/docs-api`, `securehr/ui`, `securehr/edge` | Build error |
 | 10 | Image scan | Trivy `0.76.2` image scan | Any high or critical |
+| 11 | Deploy staging | `docker compose -p securehr-staging` (root Compose file + `edge/compose.staging.yaml`): edge, ui, api, docs-api from this build's images | Portal not 200, or `/api/me` not 401, within 3 minutes |
+| 12 | End-to-end tests | Playwright `1.65.1` against `https://staging.securehr.local:8443` (`/e2e`) | Any failure |
+| 13 | Live application scan | OWASP ZAP `2.17.0` baseline (passive) scan of staging | Any High-risk alert |
+| 14 | Promote | Manual approval by `SECUREHR_DEV` (waits up to 1 hour), then the same services in `securehr-prod` | Health check fails |
 
 **Areas that don't exist yet are skipped, not failed.** Lint and test stages run only when their
 folder exists (`docs-api/pom.xml`, `frontend/package.json`). Images are built only for folders
 that have a `Dockerfile`. When a teammate's folder is merged, its stages start gating
-automatically, with no pipeline change. Stages 11–14 (staging deploy, Playwright, ZAP, promotion)
-come in a later pull request, once the root Compose file and the edge are on `main`.
+automatically, with no pipeline change. Stages 11–14 run only on `main`, and only once
+`deploy/compose/compose.yaml` exists; pull requests stop after stage 10.
 
 **Image tags:** the short commit ID. Builds of `main` also get the tag `main` (Section 0.11).
 
@@ -61,7 +65,9 @@ A new push to a pull request aborts the build that's still running for it.
 
 | Report | Where in Jenkins |
 |---|---|
-| JUnit results (unit and integration) | Build page → Tests; the job page shows the test trend |
+| JUnit results (unit, integration, Vitest, Playwright) | Build page → Tests; the job page shows the test trend |
+| Playwright HTML report, with a screenshot per test | Build page → "Playwright report" |
+| ZAP baseline report | Artifacts → `reports/zap-report.html` (and `.json`) |
 | Coverage (JaCoCo) | Build page → "Employee API coverage" summary and the HTML coverage report |
 | gitleaks, Semgrep, Trivy (filesystem and image) | Build page → one Warnings entry per tool (SARIF), plus the raw files under Artifacts → `reports/` |
 
@@ -101,14 +107,24 @@ These are the test evidence for Section 13.5. Screenshots go in `/docs/evidence/
 | `VAULT_ADDR` | Vault address (also used by `fetch-ci-secrets.sh`) |
 | `GITHUB_WEBHOOK_PROXY_URL` | The smee.io channel URL (smee service) |
 
+**`SECUREHR_HOST_CHECKOUT` is not a `.env` value.** Compose sets it from the shell's working
+directory, so start the stack from the repository root. It tells the deploy stages where the
+host's checkout is, because Jenkins drives the host's Docker engine: bind-mount paths must be
+host paths, and the edge's mkcert folder (`edge/certs`, git-ignored) exists only there. This name
+isn't in Section 0.9; it's internal to `/ci`.
+
 ### CI credentials in Vault: `secret/securehr/ci`
 
 | Key | Value |
 |---|---|
 | `github_username` | The GitHub account that owns the token |
+| `e2e_env` | The end-to-end test credentials, one `NAME=value` per line (variable names in `/e2e/README.md`) |
 | `github_token` | A fine-grained personal access token for the repository with **Contents: read**, **Commit statuses: read and write**, **Pull requests: read** and **Metadata: read** |
 
-`scripts/fetch-ci-secrets.sh` writes these to `ci/secrets/` (git-ignored, owner-only). Compose
+`scripts/fetch-ci-secrets.sh` writes these to `ci/secrets/` (git-ignored, owner-only). The
+root `.env` is also mounted, read-only, so the deploy stages use the operator's settings.
+Stage 12 turns shell tracing off (`set +x`) before loading the test credentials, so they never
+appear in the build log. Compose
 mounts them into Jenkins as Docker secrets, and configuration as code reads each file as a
 variable named after it. The token never appears in an environment variable, a file in Git, the
 image or the build log.
@@ -154,6 +170,18 @@ docker compose -p securehr-prod --env-file .env -f ci/compose.yaml -f ci/compose
   - The run used a test-only local login, not part of this folder.
 - **TC-PIPE-01:** a commit containing a fake AWS key failed at stage 2, and no later stage ran.
 
+**Stages 11–14, checked on Nov 28, 2026, against a local Jenkins:**
+- **Valid pipeline:** Jenkins' own validator accepts the Jenkinsfile.
+- **Jenkins can deploy:** the image has Docker Compose, and the host checkout path reaches Jenkins.
+- **Hostnames and secrets reach the tools:** `staging.securehr.local` resolves to the host, and
+  tool containers can read the mounted secret files.
+- **Passwords stay out of the log:** `set +x` keeps a loaded password out of the trace, as stage
+  12 does.
+- **The ZAP script works:** run against a live page as the same user Jenkins uses, it saved both
+  reports and counted high-risk alerts (0, so it passed).
+- **Not run yet:** an actual staging deploy, the end-to-end run and the promotion. They need the
+  full stack on `main`, including Arthi's Compose file and Jack's identity services.
+
 **Test locally without Keycloak:** start Jenkins with an extra Compose file that points
 `CASC_JENKINS_CONFIG` at a folder with a local test user and a pipeline job. Keep that file
 outside the repository and never commit a local login.
@@ -190,4 +218,6 @@ outside the repository and never commit a local login.
 | gitleaks | `zricethezav/gitleaks:v8.30.1` |
 | Semgrep | `semgrep/semgrep:1.187.0` |
 | Trivy | `aquasec/trivy:0.76.2` |
+| Playwright | `mcr.microsoft.com/playwright:v1.65.1-noble` |
+| OWASP ZAP | `zaproxy/zap-stable:2.17.0` |
 | Plugins | See `jenkins/plugins.txt` |
