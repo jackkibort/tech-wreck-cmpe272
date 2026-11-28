@@ -1,0 +1,31 @@
+# Repository-wide ignores (owner: Arthi). Area folders may add their own .gitignore.
+
+# Local environment file with real values (Section 0.9). Only .env.example is committed.
+.env
+.env.*
+!.env.example
+
+# Build output
+**/target/
+**/dist/
+frontend/coverage/
+
+# Node.js dependencies and caches
+**/node_modules/
+**/.vite/
+*.tsbuildinfo
+
+# Downloaded dataset (test_db clone); never committed
+database/.cache/
+
+# Local mkcert certificates and keys (Section 0.11); each teammate generates their own
+edge/certs/
+*.pem
+*.key
+
+# Editor and OS files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
