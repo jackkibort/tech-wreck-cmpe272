@@ -47,6 +47,10 @@ pipeline {
     MAVEN_USER_HOME = '/var/jenkins_home/.m2'
     MAVEN_ARGS = '-B -ntp -Dmaven.repo.local=/var/jenkins_home/.m2/repository'
     TRIVY_CACHE_DIR = '/var/jenkins_home/.cache/trivy'
+    // Builds run side by side and share one Trivy database. One build at a time may update it
+    // (exclusive lock) and scans read it under a shared lock, so a scan never reads a database
+    // that is being rewritten (a concurrent update crashed Trivy).
+    TRIVY_LOCK = '/var/jenkins_home/.cache/trivy.lock'
     NPM_CONFIG_CACHE = '/var/jenkins_home/.npm'
   }
 
@@ -75,10 +79,12 @@ pipeline {
       }
       options { timeout(time: 10, unit: 'MINUTES') }
       steps {
-        // Scans the full Git history, not only the latest files: a secret that was committed and
-        // later deleted is still leaked and must be rotated (TC-PIPE-01).
+        // Scans the full history of the commit being built, not only the latest files: a secret
+        // that was committed and later deleted is still leaked and must be rotated (TC-PIPE-01).
+        // --log-opts=HEAD keeps the scan to this commit's history. Without it gitleaks scans every
+        // branch the checkout fetched, so one leaking branch would fail every other build.
         sh '''
-          gitleaks git --no-banner --redact \
+          gitleaks git --no-banner --redact --log-opts=HEAD \
             --config ci/scanners/gitleaks.toml \
             --report-format sarif --report-path "$REPORTS/gitleaks.sarif" \
             .
@@ -221,8 +227,11 @@ pipeline {
         // rate-limits repeated downloads.
         sh '''
           export HOME=/var/jenkins_home
+          mkdir -p "$(dirname "$TRIVY_LOCK")"
+          flock -x "$TRIVY_LOCK" trivy image --download-db-only --no-progress
+          flock -x "$TRIVY_LOCK" trivy image --download-java-db-only --no-progress
           status=0
-          trivy fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
+          flock -s "$TRIVY_LOCK" trivy fs --skip-db-update --skip-java-db-update --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
             --ignorefile backend/.trivyignore.yaml \
             --skip-dirs docs/evidence \
             --format json --output "$REPORTS/trivy-fs.json" \
@@ -263,11 +272,17 @@ pipeline {
           // Fails on any high or critical vulnerability in an image (Section 11.2). Each image
           // uses its own folder's ignore file, when the owner has one.
           def failed = []
+          sh '''
+            mkdir -p "$(dirname "$TRIVY_LOCK")"
+            flock -x "$TRIVY_LOCK" trivy image --download-db-only --no-progress
+            flock -x "$TRIVY_LOCK" trivy image --download-java-db-only --no-progress
+          '''
           applicationImages().each { img ->
             def report = "${env.REPORTS}/trivy-image-${img.context}"
             def ignore = fileExists("${img.context}/.trivyignore.yaml") ? "--ignorefile ${img.context}/.trivyignore.yaml" : ''
             def status = sh(returnStatus: true, script: """
-              trivy image --scanners vuln --severity HIGH,CRITICAL ${ignore} \
+              flock -s "\$TRIVY_LOCK" trivy image --skip-db-update --skip-java-db-update \
+                --scanners vuln --severity HIGH,CRITICAL ${ignore} \
                 --format json --output ${report}.json --exit-code 1 ${img.name}:${env.IMAGE_TAG}
             """)
             sh """
