@@ -13,9 +13,21 @@ services:
       KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI}
       JENKINS_OIDC_CLIENT_SECRET: ${JENKINS_OIDC_CLIENT_SECRET}
       VAULT_ADDR: ${VAULT_ADDR}
+      # Host path of this repository checkout (Compose is run from the repository root, so the
+      # shell's PWD is it). Deploys use it for the edge's git-ignored certificate folder, because
+      # bind mounts are resolved by the host's Docker engine (see Jenkinsfile, deployRuntime).
+      SECUREHR_HOST_CHECKOUT: ${PWD}
+    # Staging's edge is in another Compose project, published on host port 8443; production
+    # hostnames already resolve to the production edge on the edge network (Section 0.3).
+    extra_hosts:
+      - "staging.${SECUREHR_DOMAIN:-securehr.local}:host-gateway"
     secrets:
       - github_username
       - github_token
+      # The root .env, so stages 11 and 14 deploy with the same settings as the operator.
+      - securehr_env
+      # End-to-end test credentials (stage 12), from Vault.
+      - e2e_env
     volumes:
       - jenkins-data:/var/jenkins_home
       # Host Docker engine, used to run the scanners and build images (Section 11.4 trade-off).
@@ -48,13 +60,17 @@ services:
     cap_drop:
       - ALL
 
-# GitHub credentials from Vault (secret/securehr/ci), written by scripts/fetch-ci-secrets.sh.
+# CI credentials from Vault (secret/securehr/ci), written by scripts/fetch-ci-secrets.sh.
 # The files are git-ignored and readable only by their owner.
 secrets:
   github_username:
     file: ./secrets/github_username
   github_token:
     file: ./secrets/github_token
+  securehr_env:
+    file: ../.env
+  e2e_env:
+    file: ./secrets/e2e_env
 
 volumes:
   jenkins-data:

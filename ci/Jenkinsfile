@@ -1,6 +1,8 @@
 // SecureHR pipeline (Section 11.2): every branch and pull request is checked out, scanned for
 // secrets, linted, code-scanned, tested, dependency-scanned, built into images and image-scanned.
-// Any gate failure stops the build and marks the pull request check red.
+// Any gate failure stops the build and marks the pull request check red. Builds of main then
+// deploy to staging, run the end-to-end tests and the ZAP scan there, and wait for a person to
+// approve the promotion to production (stages 11-14).
 //
 // Every tool runs in its own pinned container on the host Docker engine (Section 11.4), so the
 // Jenkins image stays small and tool versions change in one place: the environment block below.
@@ -28,6 +30,16 @@ pipeline {
     TRIVY_IMAGE = 'aquasec/trivy:0.76.2'
     JDK_IMAGE = 'eclipse-temurin:21.0.13_9-jdk-noble'
     NODE_IMAGE = 'node:22.23.5-alpine3.24'
+    PLAYWRIGHT_IMAGE = 'mcr.microsoft.com/playwright:v1.65.1-noble'
+    ZAP_IMAGE = 'zaproxy/zap-stable:2.17.0'
+
+    // Stages 11-14 (Section 11.3). The root .env and the end-to-end credentials are mounted into
+    // Jenkins as Docker secrets (ci/compose.yaml); they're read from files, never echoed.
+    SECUREHR_ENV_FILE = '/run/secrets/securehr_env'
+    E2E_ENV_FILE = '/run/secrets/e2e_env'
+    ROOT_COMPOSE = 'deploy/compose/compose.yaml'
+    STAGING_URL = 'https://staging.securehr.local:8443'
+    PRODUCTION_URL = 'https://securehr.local'
 
     REPORTS = 'reports'
     // Shared caches live in the Jenkins home volume, which every tool container mounts
@@ -272,6 +284,105 @@ pipeline {
         }
       }
     }
+
+    // ---- Stages 11-14: main only, once the root Compose file exists (Section 11.2) ----------
+
+    stage('11. Deploy staging') {
+      when { allOf { branch 'main'; expression { fileExists(env.ROOT_COMPOSE) } } }
+      options { timeout(time: 15, unit: 'MINUTES') }
+      steps {
+        // Staging runs its own edge, ui, api and docs-api from the images just built and scanned
+        // (project securehr-staging, port 8443); it shares the identity, secrets, data and log
+        // services with production (Section 11.3).
+        deployRuntime('securehr-staging', ['-f', 'edge/compose.staging.yaml'])
+        waitForHealthy(env.STAGING_URL)
+      }
+    }
+
+    stage('12. End-to-end tests') {
+      when { allOf { branch 'main'; expression { fileExists(env.ROOT_COMPOSE) && fileExists('e2e/package.json') } } }
+      agent {
+        docker {
+          image "${PLAYWRIGHT_IMAGE}"
+          args publicHostArgs()
+          reuseNode true
+        }
+      }
+      options { timeout(time: 20, unit: 'MINUTES') }
+      steps {
+        dir('e2e') {
+          // Credentials are exported from the secret file into this shell only.
+          sh '''
+            set +x
+            set -a; . "$E2E_ENV_FILE"; set +a
+            export HOME="$WORKSPACE_TMP" E2E_TARGET=staging
+            npm ci --no-audit --no-fund
+            npx playwright test
+          '''
+        }
+      }
+      post {
+        always {
+          junit allowEmptyResults: true, testResults: 'e2e/reports/junit.xml'
+          publishHTML(target: [
+            reportName: 'Playwright report',
+            reportDir: 'e2e/reports/html',
+            reportFiles: 'index.html',
+            allowMissing: true,
+            keepAll: true,
+            alwaysLinkToLastBuild: true,
+          ])
+        }
+      }
+    }
+
+    stage('13. Live application scan') {
+      when { allOf { branch 'main'; expression { fileExists(env.ROOT_COMPOSE) } } }
+      agent {
+        docker {
+          image "${ZAP_IMAGE}"
+          args "--entrypoint= ${publicHostArgs()}"
+          reuseNode true
+        }
+      }
+      options { timeout(time: 20, unit: 'MINUTES') }
+      steps {
+        // ZAP baseline (passive) scan of staging. It fails only on a High-risk alert
+        // (Section 11.2); lower alerts are kept in the report for review.
+        // ZAP writes its reports to /zap/wrk, which the image expects to be mounted; create it.
+        sh '''
+          mkdir -p /zap/wrk
+          zap-baseline.py -t "$STAGING_URL" -I -m 3 \
+            -r zap-report.html -J zap-report.json || true
+          mkdir -p "$REPORTS"
+          cp /zap/wrk/zap-report.html /zap/wrk/zap-report.json "$REPORTS/"
+          python3 - "$REPORTS/zap-report.json" <<'PY'
+import json, sys
+report = json.load(open(sys.argv[1]))
+high = [a for site in report.get("site", []) for a in site.get("alerts", []) if a.get("riskcode") == "3"]
+for alert in high:
+    print("HIGH:", alert.get("alert"), "-", alert.get("count"), "instance(s)")
+print(f"ZAP high-risk alerts: {len(high)}")
+sys.exit(1 if high else 0)
+PY
+        '''
+      }
+    }
+
+    stage('14. Promote to production') {
+      when { allOf { branch 'main'; expression { fileExists(env.ROOT_COMPOSE) } } }
+      steps {
+        // A person approves every production release (Section 5.5). The build waits up to an
+        // hour, then stops without deploying.
+        timeout(time: 60, unit: 'MINUTES') {
+          input message: "Promote ${env.IMAGE_TAG} to production?", ok: 'Promote', submitter: 'SECUREHR_DEV'
+        }
+        timeout(time: 15, unit: 'MINUTES') {
+          deployRuntime('securehr-prod', [])
+          waitForHealthy(env.PRODUCTION_URL)
+        }
+      }
+    }
   }
 
   post {
@@ -337,4 +448,55 @@ def publishJavaResults(String folder, String label) {
     keepAll: true,
     alwaysLinkToLastBuild: true,
   ])
+}
+
+/**
+ * Starts the runtime services of a Compose project (edge, ui, api, docs-api, whichever exist on
+ * this branch) from the images this build tagged with IMAGE_TAG. Nothing is rebuilt here, so what
+ * runs is exactly what stages 9 and 10 built and scanned.
+ */
+def deployRuntime(String project, List extraFiles) {
+  // Jenkins drives the host's Docker engine, so bind-mount paths must be host paths. The only one
+  // the runtime services use is the edge's mkcert folder, which is git-ignored and exists only in
+  // the host checkout; point it there. Every other file comes from the commit being built.
+  writeFile file: 'host-paths.override.yaml', text: """
+services:
+  edge:
+    volumes: !override
+      - ${env.SECUREHR_HOST_CHECKOUT}/edge/certs:/etc/nginx/certs:ro
+"""
+  def files = (['-f', env.ROOT_COMPOSE] + extraFiles + ['-f', 'host-paths.override.yaml']).join(' ')
+  def compose = "docker compose -p ${project} --env-file ${env.SECUREHR_ENV_FILE} ${files}"
+  def available = sh(script: "${compose} config --services", returnStdout: true).trim().split('\n') as List
+  def services = ['edge', 'ui', 'api', 'docs-api'].findAll { available.contains(it) }
+  sh "IMAGE_TAG=${env.IMAGE_TAG} ${compose} up -d --no-build --no-deps ${services.join(' ')}"
+}
+
+/**
+ * Fails the build unless the stack answers through the edge within 3 minutes: the portal page
+ * returns 200 and /api/me returns 401, which shows the API is up and checking tokens.
+ */
+def waitForHealthy(String baseUrl) {
+  // -k: the certificate comes from the local mkcert authority, which this container doesn't
+  // trust; this checks that the services answer, not TLS (the edge's own tests cover TLS).
+  sh """
+    for attempt in \$(seq 1 36); do
+      portal=\$(curl -ks -o /dev/null -w '%{http_code}' --max-time 5 '${baseUrl}/' || true)
+      api=\$(curl -ks -o /dev/null -w '%{http_code}' --max-time 5 '${baseUrl}/api/me' || true)
+      echo "attempt \$attempt: portal=\$portal api=\$api"
+      if [ "\$portal" = 200 ] && [ "\$api" = 401 ]; then exit 0; fi
+      sleep 5
+    done
+    echo 'Health check failed for ${baseUrl}' >&2
+    exit 1
+  """
+}
+
+/**
+ * Docker arguments that make the public hostnames resolve to the host, where the production
+ * edge publishes 443 and the staging edge 8443 (Section 0.3).
+ */
+def publicHostArgs() {
+  def domain = env.SECUREHR_DOMAIN ?: 'securehr.local'
+  return ['', 'staging.', 'auth.', 'grafana.', 'ci.'].collect { "--add-host=${it}${domain}:host-gateway" }.join(' ')
 }
