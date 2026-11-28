@@ -1,0 +1,18 @@
+{
+  "name": "securehr-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "End-to-end tests for SecureHR (Section 13.2): sign-in, portal journeys, audit trail and security headers.",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "typecheck": "tsc --noEmit",
+    "report": "playwright show-report reports/html"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1",
+    "@types/node": "22.20.7",
+    "otpauth": "9.6.0",
+    "typescript": "5.9.3"
+  }
+}
