@@ -1,0 +1,4 @@
+{
+  "authority": "https://auth.securehr.local/realms/securehr",
+  "clientId": "securehr-portal"
+}
