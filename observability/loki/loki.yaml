@@ -1,0 +1,45 @@
+# Loki in single-binary mode with local filesystem storage: enough for one machine.
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+
+schema_config:
+  configs:
+    - from: 2026-11-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  # Keep 30 days: covers the demo, grading and the audit review (Section 11.5).
+  retention_period: 720h
+  # Only two labels exist (Section 0.10), so streams stay few; this guards against mistakes.
+  max_label_names_per_series: 4
+  allow_structured_metadata: true
+  # Loki 3 adds a service_name label by default; Section 0.10 allows service and log_type only.
+  discover_service_name: []
+
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+
+analytics:
+  reporting_enabled: false

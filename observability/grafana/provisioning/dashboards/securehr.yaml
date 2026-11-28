@@ -1,0 +1,12 @@
+# Dashboards are loaded from /var/lib/grafana/dashboards. Each subfolder becomes a Grafana
+# folder: Audit (open to auditors) and Platform (developers only).
+apiVersion: 1
+providers:
+  - name: securehr
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: true
