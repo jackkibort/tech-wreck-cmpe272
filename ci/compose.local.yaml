@@ -1,0 +1,7 @@
+# Local development only: publishes Jenkins on http://localhost:8090 so the pipeline can be
+# tried before the edge exists. Never used in the securehr-prod or securehr-staging stacks,
+# where only the edge publishes host ports (Section 0.2).
+services:
+  jenkins:
+    ports:
+      - "127.0.0.1:8090:8080"

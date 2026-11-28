@@ -1,0 +1,2 @@
+# GitHub credentials fetched from Vault by scripts/fetch-ci-secrets.sh. Never commit.
+/secrets/

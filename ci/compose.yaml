@@ -1,0 +1,64 @@
+# CI area file (Section 0.2), included by the root Compose file: Jenkins and the webhook relay.
+# These images are built locally and left unnamed (Compose names them after the project), since
+# Section 0.11 reserves the securehr/* image names for the application.
+services:
+  # Jenkins controller. Reached only through the edge at https://ci.securehr.local.
+  jenkins:
+    build:
+      context: ./jenkins
+    restart: unless-stopped
+    environment:
+      # Section 0.9 names only. The OIDC client secret is supplied at start, never stored here.
+      SECUREHR_DOMAIN: ${SECUREHR_DOMAIN:-securehr.local}
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI}
+      JENKINS_OIDC_CLIENT_SECRET: ${JENKINS_OIDC_CLIENT_SECRET}
+      VAULT_ADDR: ${VAULT_ADDR}
+    secrets:
+      - github_username
+      - github_token
+    volumes:
+      - jenkins-data:/var/jenkins_home
+      # Host Docker engine, used to run the scanners and build images (Section 11.4 trade-off).
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - edge
+      - app
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:8080/login"]
+      interval: 30s
+      timeout: 5s
+      start_period: 120s
+      retries: 3
+
+  # Forwards GitHub webhooks from the smee.io channel to Jenkins (GitHub can't reach a laptop).
+  smee:
+    build:
+      context: ./smee
+    restart: unless-stopped
+    environment:
+      GITHUB_WEBHOOK_PROXY_URL: ${GITHUB_WEBHOOK_PROXY_URL}
+    depends_on:
+      jenkins:
+        condition: service_started
+    networks:
+      - edge
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+# GitHub credentials from Vault (secret/securehr/ci), written by scripts/fetch-ci-secrets.sh.
+# The files are git-ignored and readable only by their owner.
+secrets:
+  github_username:
+    file: ./secrets/github_username
+  github_token:
+    file: ./secrets/github_token
+
+volumes:
+  jenkins-data:
+
+networks:
+  edge:
+  app:

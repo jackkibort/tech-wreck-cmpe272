@@ -1,0 +1,45 @@
+# Jenkins security (Sections 0.5 and 11.4): Keycloak single sign-on, and only SECUREHR_DEV
+# (the securehr-devs directory group) gets in. There is no local admin account.
+jenkins:
+  systemMessage: "SecureHR CI. Sign in with your SecureHR directory account."
+  # Builds run on the controller and use the host Docker engine; see /ci/README.md (trade-off).
+  numExecutors: 2
+  securityRealm:
+    oic:
+      clientId: "jenkins"
+      clientSecret: "${JENKINS_OIDC_CLIENT_SECRET}"
+      # Endpoints are written out from the issuer instead of discovered, so Jenkins starts even
+      # when Keycloak is not up yet. They are Keycloak's standard OIDC endpoints for the realm.
+      serverConfiguration:
+        manual:
+          issuer: "${KEYCLOAK_ISSUER_URI}"
+          authorizationServerUrl: "${KEYCLOAK_ISSUER_URI}/protocol/openid-connect/auth"
+          tokenServerUrl: "${KEYCLOAK_ISSUER_URI}/protocol/openid-connect/token"
+          userInfoServerUrl: "${KEYCLOAK_ISSUER_URI}/protocol/openid-connect/userinfo"
+          jwksServerUrl: "${KEYCLOAK_ISSUER_URI}/protocol/openid-connect/certs"
+          endSessionUrl: "${KEYCLOAK_ISSUER_URI}/protocol/openid-connect/logout"
+          scopes: "openid profile email"
+      # Claim names from the identity contract (Section 0.5).
+      userNameField: "preferred_username"
+      fullNameFieldName: "name"
+      emailFieldName: "email"
+      groupsFieldName: "realm_access.roles"
+      properties:
+        # Authorization code + PKCE (S256), as for every client in the realm (Section 0.5).
+        - pkce
+      # Logging out of Jenkins also ends the Keycloak session (TC-AUTH-04).
+      logoutFromOpenidProvider: true
+      postLogoutRedirectUrl: "https://ci.${SECUREHR_DOMAIN}/"
+  # Deny by default: realm role SECUREHR_DEV is administrator; nobody else has any permission,
+  # including read (Section 0.5, Jenkins mapping).
+  authorizationStrategy:
+    globalMatrix:
+      entries:
+        - group:
+            name: "SECUREHR_DEV"
+            permissions:
+              - "Overall/Administer"
+
+unclassified:
+  location:
+    url: "https://ci.${SECUREHR_DOMAIN}/"

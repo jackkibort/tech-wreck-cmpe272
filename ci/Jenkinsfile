@@ -1,0 +1,340 @@
+// SecureHR pipeline (Section 11.2): every branch and pull request is checked out, scanned for
+// secrets, linted, code-scanned, tested, dependency-scanned, built into images and image-scanned.
+// Any gate failure stops the build and marks the pull request check red.
+//
+// Every tool runs in its own pinned container on the host Docker engine (Section 11.4), so the
+// Jenkins image stays small and tool versions change in one place: the environment block below.
+// An area whose folder does not exist yet (for example /frontend before it is merged) is shown as
+// skipped rather than failed; once the folder lands, its stages run and gate automatically.
+
+pipeline {
+  agent any
+
+  options {
+    // The Checkout stage does it explicitly, so it appears as stage 1.
+    skipDefaultCheckout()
+    timestamps()
+    // Upper bound for the whole run; each stage below has its own tighter limit.
+    timeout(time: 60, unit: 'MINUTES')
+    // A new push to the same pull request replaces the build that is still running.
+    disableConcurrentBuilds(abortPrevious: true)
+    buildDiscarder(logRotator(numToKeepStr: '20', artifactNumToKeepStr: '10'))
+  }
+
+  environment {
+    // Tool images (Section 0.1: exact tags, never "latest").
+    GITLEAKS_IMAGE = 'zricethezav/gitleaks:v8.30.1'
+    SEMGREP_IMAGE = 'semgrep/semgrep:1.187.0'
+    TRIVY_IMAGE = 'aquasec/trivy:0.76.2'
+    JDK_IMAGE = 'eclipse-temurin:21.0.13_9-jdk-noble'
+    NODE_IMAGE = 'node:22.23.5-alpine3.24'
+
+    REPORTS = 'reports'
+    // Shared caches live in the Jenkins home volume, which every tool container mounts
+    // (the Docker Pipeline plugin passes --volumes-from for the Jenkins container).
+    MAVEN_USER_HOME = '/var/jenkins_home/.m2'
+    MAVEN_ARGS = '-B -ntp -Dmaven.repo.local=/var/jenkins_home/.m2/repository'
+    TRIVY_CACHE_DIR = '/var/jenkins_home/.cache/trivy'
+    NPM_CONFIG_CACHE = '/var/jenkins_home/.npm'
+  }
+
+  stages {
+    stage('1. Checkout') {
+      steps {
+        checkout scm
+        script {
+          // Image tags are the short commit ID; main builds also get "main" (Section 0.11).
+          env.IMAGE_TAG = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+          // Tool containers run as the jenkins user; Testcontainers and Trivy need the socket's
+          // group to reach the Docker engine. The group differs between Linux and Docker Desktop.
+          env.DOCKER_SOCKET_GID = sh(script: 'stat -c %g /var/run/docker.sock', returnStdout: true).trim()
+        }
+        sh 'mkdir -p "$REPORTS"'
+      }
+    }
+
+    stage('2. Secrets scan') {
+      agent {
+        docker {
+          image "${GITLEAKS_IMAGE}"
+          args '--entrypoint='
+          reuseNode true
+        }
+      }
+      options { timeout(time: 10, unit: 'MINUTES') }
+      steps {
+        // Scans the full Git history, not only the latest files: a secret that was committed and
+        // later deleted is still leaked and must be rotated (TC-PIPE-01).
+        sh '''
+          gitleaks git --no-banner --redact \
+            --config ci/scanners/gitleaks.toml \
+            --report-format sarif --report-path "$REPORTS/gitleaks.sarif" \
+            .
+        '''
+      }
+    }
+
+    // The Maven wrapper is run through sh so the build does not depend on the file's executable
+    // bit being set in Git.
+    stage('3. Lint and format') {
+      parallel {
+        stage('Employee API') {
+          when { expression { fileExists('backend/pom.xml') } }
+          agent { docker { image "${JDK_IMAGE}"; reuseNode true } }
+          options { timeout(time: 10, unit: 'MINUTES') }
+          steps {
+            dir('backend') { sh 'sh ./mvnw spotless:check checkstyle:check' }
+          }
+        }
+        stage('Document API') {
+          when { expression { fileExists('docs-api/pom.xml') } }
+          agent { docker { image "${JDK_IMAGE}"; reuseNode true } }
+          options { timeout(time: 10, unit: 'MINUTES') }
+          steps {
+            dir('docs-api') { sh 'sh ./mvnw spotless:check checkstyle:check' }
+          }
+        }
+        stage('Frontend') {
+          when { expression { fileExists('frontend/package.json') } }
+          agent { docker { image "${NODE_IMAGE}"; reuseNode true } }
+          options { timeout(time: 10, unit: 'MINUTES') }
+          steps {
+            dir('frontend') {
+              sh '''
+                npm ci --no-audit --no-fund
+                npx eslint --max-warnings 0 .
+                npx prettier --check .
+              '''
+            }
+          }
+        }
+      }
+    }
+
+    stage('4. Code scan') {
+      agent {
+        docker {
+          image "${SEMGREP_IMAGE}"
+          args '--entrypoint='
+          reuseNode true
+        }
+      }
+      options { timeout(time: 15, unit: 'MINUTES') }
+      steps {
+        // Gate on high severity only (Semgrep's ERROR level); lower findings stay in the report.
+        // HOME points at the build's temp folder because the jenkins user has no home in this image.
+        sh '''
+          HOME="$WORKSPACE_TMP" semgrep scan --metrics=off --disable-version-check \
+            --config p/java --config p/typescript --config p/dockerfile \
+            --exclude docs/evidence \
+            --sarif --output "$REPORTS/semgrep.sarif" \
+            --severity ERROR --error \
+            .
+        '''
+      }
+    }
+
+    stage('5. Employee API tests') {
+      when { expression { fileExists('backend/pom.xml') } }
+      agent {
+        docker {
+          image "${JDK_IMAGE}"
+          args testcontainersArgs()
+          reuseNode true
+        }
+      }
+      options { timeout(time: 30, unit: 'MINUTES') }
+      environment { TESTCONTAINERS_HOST_OVERRIDE = 'host.docker.internal' }
+      steps {
+        // Lint already ran in stage 3; verify runs unit, matrix and integration tests and the
+        // coverage gate (Section 13.1).
+        dir('backend') { sh 'sh ./mvnw verify -Dspotless.check.skip=true -Dcheckstyle.skip=true' }
+      }
+      post {
+        always { publishJavaResults('backend', 'Employee API') }
+      }
+    }
+
+    stage('6. Document API tests') {
+      when { expression { fileExists('docs-api/pom.xml') } }
+      agent {
+        docker {
+          image "${JDK_IMAGE}"
+          args testcontainersArgs()
+          reuseNode true
+        }
+      }
+      options { timeout(time: 30, unit: 'MINUTES') }
+      environment { TESTCONTAINERS_HOST_OVERRIDE = 'host.docker.internal' }
+      steps {
+        dir('docs-api') { sh 'sh ./mvnw verify -Dspotless.check.skip=true -Dcheckstyle.skip=true' }
+      }
+      post {
+        always { publishJavaResults('docs-api', 'Document API') }
+      }
+    }
+
+    stage('7. Frontend tests') {
+      when { expression { fileExists('frontend/package.json') } }
+      agent { docker { image "${NODE_IMAGE}"; reuseNode true } }
+      options { timeout(time: 15, unit: 'MINUTES') }
+      steps {
+        dir('frontend') {
+          sh '''
+            npm ci --no-audit --no-fund
+            npx vitest run --reporter=default --reporter=junit \
+              --outputFile.junit="$WORKSPACE/$REPORTS/frontend-junit.xml"
+          '''
+        }
+      }
+      post {
+        always { junit allowEmptyResults: true, testResults: "${REPORTS}/frontend-junit.xml" }
+      }
+    }
+
+    stage('8. Dependency scan') {
+      agent {
+        docker {
+          image "${TRIVY_IMAGE}"
+          args '--entrypoint='
+          reuseNode true
+        }
+      }
+      options { timeout(time: 15, unit: 'MINUTES') }
+      steps {
+        // Fails on high or critical vulnerabilities that have a fix available (Section 11.2).
+        // Accepted findings, each with a reason and an expiry date, are in the ignore file.
+        // HOME is the Jenkins home so Trivy reads the Maven cache the test stages filled
+        // ($HOME/.m2/repository) instead of fetching every pom from Maven Central, which
+        // rate-limits repeated downloads.
+        sh '''
+          export HOME=/var/jenkins_home
+          status=0
+          trivy fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
+            --ignorefile backend/.trivyignore.yaml \
+            --skip-dirs docs/evidence \
+            --format json --output "$REPORTS/trivy-fs.json" \
+            --exit-code 1 . || status=$?
+          trivy convert --format table "$REPORTS/trivy-fs.json"
+          trivy convert --format sarif --output "$REPORTS/trivy-fs.sarif" "$REPORTS/trivy-fs.json"
+          exit $status
+        '''
+      }
+    }
+
+    stage('9. Build images') {
+      options { timeout(time: 20, unit: 'MINUTES') }
+      steps {
+        script {
+          applicationImages().each { img ->
+            def tags = "-t ${img.name}:${env.IMAGE_TAG}"
+            if (env.BRANCH_NAME == 'main') {
+              tags += " -t ${img.name}:main"
+            }
+            sh "docker build ${tags} ${img.context}"
+          }
+        }
+      }
+    }
+
+    stage('10. Image scan') {
+      agent {
+        docker {
+          image "${TRIVY_IMAGE}"
+          args "--entrypoint= -v /var/run/docker.sock:/var/run/docker.sock --group-add ${env.DOCKER_SOCKET_GID}"
+          reuseNode true
+        }
+      }
+      options { timeout(time: 20, unit: 'MINUTES') }
+      steps {
+        script {
+          // Fails on any high or critical vulnerability in an image (Section 11.2). Each image
+          // uses its own folder's ignore file, when the owner has one.
+          def failed = []
+          applicationImages().each { img ->
+            def report = "${env.REPORTS}/trivy-image-${img.context}"
+            def ignore = fileExists("${img.context}/.trivyignore.yaml") ? "--ignorefile ${img.context}/.trivyignore.yaml" : ''
+            def status = sh(returnStatus: true, script: """
+              trivy image --scanners vuln --severity HIGH,CRITICAL ${ignore} \
+                --format json --output ${report}.json --exit-code 1 ${img.name}:${env.IMAGE_TAG}
+            """)
+            sh """
+              trivy convert --format table ${report}.json
+              trivy convert --format sarif --output ${report}.sarif ${report}.json
+            """
+            if (status != 0) {
+              failed << img.name
+            }
+          }
+          if (failed) {
+            error("Image scan found high or critical vulnerabilities in: ${failed.join(', ')}")
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      archiveArtifacts artifacts: "${REPORTS}/**", allowEmptyArchive: true
+      recordIssues(
+        enabledForFailure: true,
+        skipPublishingChecks: true,
+        tools: [
+          sarif(id: 'gitleaks', name: 'Secrets (gitleaks)', pattern: "${REPORTS}/gitleaks.sarif"),
+          sarif(id: 'semgrep', name: 'Code scan (Semgrep)', pattern: "${REPORTS}/semgrep.sarif"),
+          sarif(id: 'trivy-fs', name: 'Dependencies (Trivy)', pattern: "${REPORTS}/trivy-fs.sarif"),
+          sarif(id: 'trivy-image', name: 'Images (Trivy)', pattern: "${REPORTS}/trivy-image-*.sarif"),
+        ]
+      )
+    }
+    cleanup {
+      cleanWs()
+    }
+  }
+}
+
+/**
+ * The application images (Section 0.11) whose folders exist on this branch, as maps with the
+ * image name and the build context folder.
+ */
+def applicationImages() {
+  def all = [
+    [name: 'securehr/api', context: 'backend'],
+    [name: 'securehr/docs-api', context: 'docs-api'],
+    [name: 'securehr/ui', context: 'frontend'],
+    [name: 'securehr/edge', context: 'edge'],
+  ]
+  return all.findAll { fileExists("${it.context}/Dockerfile") }
+}
+
+/**
+ * Docker arguments that let Testcontainers inside a tool container start sibling containers on
+ * the host engine and reach their mapped ports through host.docker.internal.
+ */
+def testcontainersArgs() {
+  return "-v /var/run/docker.sock:/var/run/docker.sock --group-add ${env.DOCKER_SOCKET_GID} " +
+    '--add-host=host.docker.internal:host-gateway'
+}
+
+/**
+ * Publishes JUnit results (unit and integration) and the JaCoCo coverage report for a Maven area.
+ */
+def publishJavaResults(String folder, String label) {
+  junit allowEmptyResults: true,
+    testResults: "${folder}/target/surefire-reports/*.xml, ${folder}/target/failsafe-reports/*.xml"
+  recordCoverage(
+    id: "coverage-${folder}",
+    name: "${label} coverage",
+    tools: [[parser: 'JACOCO', pattern: "${folder}/target/site/jacoco/jacoco.xml"]],
+    skipPublishingChecks: true
+  )
+  publishHTML(target: [
+    reportName: "${label} coverage report",
+    reportDir: "${folder}/target/site/jacoco",
+    reportFiles: 'index.html',
+    allowMissing: true,
+    keepAll: true,
+    alwaysLinkToLastBuild: true,
+  ])
+}
