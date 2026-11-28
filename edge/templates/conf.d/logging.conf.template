@@ -1,0 +1,44 @@
+# Edge logging (Sections 0.10 and 11.1). Replaces the image's plain-text access log.
+# One JSON object per line on stdout. Paths are logged without query strings, so OIDC
+# authorization codes and search terms never reach the logs.
+
+# Responses the edge produced itself (no upstream status) are security events: a 403 here can
+# only come from ModSecurity and a 429 only from limit_req. Everything else is an ordinary log.
+map "$status:$upstream_status" $edge_event_type {
+    default "";
+    "403:"  WAF_BLOCK;
+    "429:"  RATE_LIMITED;
+}
+
+map $edge_event_type $edge_log_type {
+    default audit;
+    ""      app;
+}
+
+map $edge_event_type $edge_outcome {
+    default DENIED;
+    ""      "";
+}
+
+log_format securehr_json escape=json
+    '{'
+    '"timestamp":"$time_iso8601",'
+    '"service":"edge",'
+    '"log_type":"$edge_log_type",'
+    '"event_type":"$edge_event_type",'
+    '"outcome":"$edge_outcome",'
+    '"request_id":"$securehr_request_id",'
+    '"source_ip":"$remote_addr",'
+    '"host":"$host",'
+    '"method":"$request_method",'
+    '"resource":"$uri",'
+    '"status":$status,'
+    '"bytes_sent":$body_bytes_sent,'
+    '"request_time":$request_time,'
+    '"upstream_status":"$upstream_status",'
+    '"upstream_response_time":"$upstream_response_time",'
+    '"user_agent":"$http_user_agent"'
+    '}';
+
+access_log /dev/stdout securehr_json;
+error_log ${ERRORLOG} ${LOGLEVEL};

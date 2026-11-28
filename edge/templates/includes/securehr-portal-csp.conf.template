@@ -1,0 +1,6 @@
+# Portal and API responses only (Section 8.4).
+# The SPA loads only its own bundle; it talks to the APIs on the same origin and to Keycloak
+# (EDGE_AUTH_ORIGIN) for tokens. Tokens are renewed with refresh tokens, not a hidden iframe, so
+# no frame-src is needed and the portal itself may never be framed.
+add_header X-Frame-Options "DENY" always;
+add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' ${EDGE_AUTH_ORIGIN}; frame-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self' ${EDGE_AUTH_ORIGIN}" always;

