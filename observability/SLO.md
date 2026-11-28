@@ -15,7 +15,7 @@ A request is **good** when the edge records:
 - a response time under **300 ms** (goal G3).
 
 The SLI is good requests ÷ all requests to `/api/employees`, measured at the edge from its JSON
-access logs (fields `uri`, `status`, `request_time`).
+access logs (fields `resource`, `status`, `request_time`).
 
 ## Objective
 

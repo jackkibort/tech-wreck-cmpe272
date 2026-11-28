@@ -121,7 +121,7 @@ of the repository.
 | From | What |
 |---|---|
 | Jack | Keycloak client `grafana` (`https://grafana.securehr.local/*`); its secret in Vault. Keycloak login events reaching the logs: as audit lines with `event_type` `LOGIN_SUCCESS` / `LOGIN_FAILURE`, or Keycloak's own event log, where lockouts show as `user_temporarily_disabled` |
-| Arthi | Edge route `grafana.securehr.local` → `grafana:3000`. JSON access logs with `uri`, `status` and `request_time` (seconds), which the platform and SLO panels read; firewall and rate-limit events as audit lines with `event_type` `WAF_BLOCK` / `RATE_LIMITED`. Grafana must trust the mkcert certificate to reach Keycloak |
+| Arthi | Edge route `grafana.securehr.local` → `grafana:3000`. JSON access logs with `resource`, `status` and `request_time` (seconds), as in her edge PR #25; the platform and SLO panels read them; firewall and rate-limit events as audit lines with `event_type` `WAF_BLOCK` / `RATE_LIMITED`. Grafana must trust the mkcert certificate to reach Keycloak |
 
 ## Design decisions
 
